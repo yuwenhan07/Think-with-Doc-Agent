@@ -23,7 +23,6 @@ def encode_image(image_path):
 def inference_with_api(image_path, prompt, model_id="qwen3-vl-235b-a22b-thinking", min_pixels=512*32*32, max_pixels=2048*32*32):
     base64_image = encode_image(image_path)
     client = OpenAI(
-        #If the environment variable is not configured, please replace the following line with the Dashscope API Key: api_key="sk-xxx".
         base_url="https://qianfan.baidubce.com/v2",
         api_key=os.environ.get("QianFan_API_KEY")
     )
@@ -383,4 +382,51 @@ def attach_ocr_results(doc: Dict[str, Any], ocr_results: List[Dict[str, Any]]) -
             page["diagnostics"]["ocr"] = res.get("diagnostics", {})
 
     return doc
+
+def process_document(doc: Dict[str, Any], cfg: OCRConfig) -> Dict[str, Any]:
+    """Run OCR for a full document dict and attach results.
+
+    This function is intentionally *wrapper-preserving*: it updates `doc.pages[*]`
+    in place and returns the same document object with all top-level fields kept
+    (e.g., doc_id/source/num_pages/metadata/...)
+
+    Expected input schema:
+      doc = {
+        "doc_id": ...,
+        "source": ...,
+        "num_pages": ...,
+        "metadata": ...,
+        "pages": [ {"page_number":..., "image_path":..., ...}, ...]
+      }
+
+    Returns:
+      The updated document dict with OCR fields merged into each page.
+    """
+    pages = doc.get("pages")
+    if not isinstance(pages, list):
+        raise ValueError("doc['pages'] must be a list")
+
+    ocr_results = ocr_document_pages(pages, cfg)
+    return attach_ocr_results(doc, ocr_results)
+
+
+def process_document_file(input_json_path: str, output_json_path: str, cfg: OCRConfig) -> Dict[str, Any]:
+    """Load a document JSON, run OCR, and write the full updated JSON back.
+
+    This is a convenience wrapper to avoid accidentally writing only `pages`.
+    """
+    with open(input_json_path, "r", encoding="utf-8") as f:
+        doc = json.load(f)
+
+    updated = process_document(doc, cfg)
+
+    # Ensure output directory exists
+    out_dir = os.path.dirname(os.path.abspath(output_json_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    with open(output_json_path, "w", encoding="utf-8") as f:
+        json.dump(updated, f, ensure_ascii=False, indent=2)
+
+    return updated
 

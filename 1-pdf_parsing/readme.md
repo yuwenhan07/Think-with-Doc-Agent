@@ -58,42 +58,27 @@ pdf文档
 ## **输出格式（示例 JSON）**
 ```
 {
-  "doc_id": "sha256:...",
+  "doc_id": "string", 
   "source": {
-    "filename": "paper.pdf",
-    "ingested_at": "2025-12-15T10:00:00+09:00"
+    "type": "local_file | url | upload | database",
+    "path": "string",
+    "uri": "string?"
   },
-  "num_pages": 12,
+  "num_pages": "int",
   "metadata": {
-    "title": "...",
-    "author": "...",
-    "creation_date": "...",
-    "producer": "..."
+    "title": "string | null",
+    "author": "string | null",
+    "creation_date": "string | null",
+    "parser": {
+      "renderer": "string",
+      "dpi": "int",
+      "version": "string?"
+    }
   },
   "pages": [
-    {
-      "page_number": 1,
-      "page_size": {"w_pt": 595, "h_pt": 842},
-      "rotation": 0,
-      "render": {
-        "dpi": 250,
-        "image_path": "pages/0001.png",
-        "image_sha256": "..."
-      },
-      "text_raw": "....",
-      "text_source": "pdf_text",
-      "spans": [
-        {"span_id": "1-001", "text": "Abstract ...", "bbox": [72, 100, 520, 160], "source": "pdf_text"}
-      ],
-      "diagnostics": {
-        "has_text_layer": true,
-        "text_char_count": 5320,
-        "ocr_confidence_avg": null
-      }
-    }
-  ],
-  "errors": [],
-  "warnings": []
+    "<PageObject>",
+    "<PageObject>"
+  ]
 }
 ```
 ## **关键设计选择（现在就定下来，避免返工）**
