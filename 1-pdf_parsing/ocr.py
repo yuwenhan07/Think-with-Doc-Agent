@@ -25,7 +25,7 @@ def inference_with_api(image_path, prompt, model_id="qwen3-vl-235b-a22b-thinking
     client = OpenAI(
         #If the environment variable is not configured, please replace the following line with the Dashscope API Key: api_key="sk-xxx".
         base_url="https://qianfan.baidubce.com/v2",
-        api_key="bce-v3/ALTAK-zVZzcJJcznidBUa8U1qAg/090d7e36ae3320aa004c36d5ea0c7678d97de0a9"
+        api_key=os.environ.get("QianFan_API_KEY")
     )
 
     messages=[
