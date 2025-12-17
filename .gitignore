@@ -2,3 +2,6 @@ imgs/
 jsons/
 out/
 doc/
+debug/
+*/__pycache__
+chunks/
