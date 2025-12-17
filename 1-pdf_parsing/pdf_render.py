@@ -161,11 +161,9 @@ def render_pdf_to_document(
             "type": "local_file",
             "path": abs_path,
         }
-
+    docname = os.path.basename(pdf_path)
     base_metadata: Dict[str, Any] = {
-        "title": None,
-        "author": None,
-        "creation_date": None,
+        "doc_name": docname,
         "parser": {
             "renderer": "pymupdf",
             "dpi": dpi,

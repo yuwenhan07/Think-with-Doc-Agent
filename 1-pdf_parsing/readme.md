@@ -66,9 +66,7 @@ pdf文档
   },
   "num_pages": "int",
   "metadata": {
-    "title": "string | null",
-    "author": "string | null",
-    "creation_date": "string | null",
+    "doc_name": "string | null",
     "parser": {
       "renderer": "string",
       "dpi": "int",
