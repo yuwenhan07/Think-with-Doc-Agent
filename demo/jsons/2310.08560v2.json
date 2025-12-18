@@ -1,0 +1,147 @@
+{
+  "doc_id": "sha256:9f674bcff69c86f11c813dcfad613d8841f5f8ed17979e3c4df06a91df7762e0",
+  "source": {
+    "type": "local_file",
+    "path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/doc/2310.08560v2.pdf"
+  },
+  "num_pages": 13,
+  "metadata": {
+    "doc_name": "2310.08560v2.pdf",
+    "parser": {
+      "renderer": "pymupdf",
+      "dpi": 144
+    }
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0001.png",
+      "image_sha256": "sha256:4291004a6a3f394f8d7717d45a6930ee6634e61395569616963bf8fa745d94d7",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 2,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0002.png",
+      "image_sha256": "sha256:81169f03539386c246a8f4f55f173309081b6009814f76236702520797d2503e",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 3,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0003.png",
+      "image_sha256": "sha256:ed8627f08638a8373fe8af7dd4eba52c95f6e7787f39439de40093479d02d2d6",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 4,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0004.png",
+      "image_sha256": "sha256:757385a9be16266292daf6b6c3a1cc4a791b90f252931cbb8d25550a6b569cfa",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 5,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0005.png",
+      "image_sha256": "sha256:8cc746ffcf14c64351de7e62746331d4abd7ac2375e212767a3d7db51c9f32e1",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 6,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0006.png",
+      "image_sha256": "sha256:05c8e5da1f1222bb000ba32a467943e357927c4c22b3cfaddb20b2a5e7bd6aaf",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 7,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0007.png",
+      "image_sha256": "sha256:c4bb423734a2cbf0579aa00ec772e7d03b42b3648f55860c76df581a9b71e686",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 8,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0008.png",
+      "image_sha256": "sha256:592b071f90b5b3c4a4a5e150a50394667ed5bddad969346661c6709aed47fe42",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 9,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0009.png",
+      "image_sha256": "sha256:2c1e7dd319041dbb927db30dd47b97b78c52db69fe22a112920f47ed4173520d",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 10,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0010.png",
+      "image_sha256": "sha256:9cda226fe97c931d9845405d26d2eade4584b64207d9b856add3693f82d89f7b",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 11,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0011.png",
+      "image_sha256": "sha256:c08c1ff214bf1419fc5ca3e63760146cdd64b4cf20d7967e0033547a9321d4aa",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 12,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0012.png",
+      "image_sha256": "sha256:fd46779c7c6eb05dec3042fd05a47e4868e4eca5248ec844ffc9bcec98a8b9ca",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    },
+    {
+      "page_number": 13,
+      "dpi": 144,
+      "width_px": 1224,
+      "height_px": 1584,
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0013.png",
+      "image_sha256": "sha256:070f299175b4fa4c9030c82ba7250475ed06eaecd59459774f30db2355e49625",
+      "renderer": "pymupdf",
+      "colorspace": "rgb"
+    }
+  ]
+}
