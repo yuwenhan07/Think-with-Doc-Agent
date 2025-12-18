@@ -5,13 +5,12 @@ import json
 
 DOC_NAME = "2310.08560v2"
 
-PDF_PATH = "../doc/" + DOC_NAME + ".pdf"
+PDF_PATH = "../demo/doc/" + DOC_NAME + ".pdf"
 
-OUT_DIR = "../imgs/" + PDF_PATH.split("/")[-1].replace(".pdf", "")
+OUT_DIR = "../demo/imgs/" + PDF_PATH.split("/")[-1].replace(".pdf", "")
 
-JSON_DIR = "../jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", ".json")
-
-OUTPUT_JSON = "../jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", "_ocr.json")
+JSON_DIR = "../demo/jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", ".json")
+OUTPUT_JSON = "../demo/jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", "_ocr.json")
 
 results = render_pdf_to_document(PDF_PATH, OUT_DIR, dpi=144, overwrite=True)
 

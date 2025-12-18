@@ -5,3 +5,7 @@ doc/
 debug/
 */__pycache__
 chunks/
+index_out/
+
+!demo/
+!demo/**/*
