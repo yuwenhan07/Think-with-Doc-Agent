@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from ..context import ExecutionContext, LLMConfig
+from ..llm_utils import get_llm_client, safe_json
+
+
+def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict[str, Any]:
+    query = args.get("query", "")
+    mode = args.get("mode", "theme")
+    max_rewrites = int(args.get("max_rewrites", 3))
+
+    prompt = (
+        "You are the rewrite skill. Output JSON only.\n"
+        "Required fields: intent, rewrites, negative, page_prior, notes.\n"
+        "intent examples: paper_theme, fact, locate, compare.\n"
+        f"Query: {query}\n"
+        f"Mode: {mode}\n"
+        f"Max rewrites: {max_rewrites}\n"
+    )
+
+    client = get_llm_client(llm)
+    completion = client.chat.completions.create(
+        model=llm.model_id,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=llm.temperature,
+        max_tokens=llm.max_tokens,
+    )
+
+    content = completion.choices[0].message.content or ""
+    parsed = safe_json(content)
+    if not parsed:
+        raise ValueError(f"rewrite: invalid JSON output: {content}")
+
+    rewrites = parsed.get("rewrites", [])
+    if isinstance(rewrites, list) and len(rewrites) > max_rewrites:
+        parsed["rewrites"] = rewrites[:max_rewrites]
+
+    return parsed
