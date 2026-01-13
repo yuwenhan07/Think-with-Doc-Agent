@@ -11,6 +11,9 @@ def _score_block(block: Dict[str, Any], intent: str) -> float:
     text = (block.get("text") or "").lower()
     if btype == "text":
         score += 0.2
+    else:
+        # Promote non-text blocks slightly so images/tables can appear in context.
+        score += 0.15
     if intent in ("paper_theme", "theme", "summarize"):
         if text.startswith("#") or "abstract" in text:
             score += 0.4

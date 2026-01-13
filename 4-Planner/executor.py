@@ -280,6 +280,11 @@ class Executor:
 
             self._record(state, tool, args, obs)
 
+            if tool == "judge_answer" and obs.get("verdict") == "final":
+                final_obs = get_skill("finalize")({"answer": state.last_answer or {}}, self.ctx, self.llm_config)
+                self._record(state, "finalize", {}, final_obs)
+                return {"final": final_obs, "trace": state.trace}
+
             if tool == "finalize":
                 return {"final": obs, "trace": state.trace}
 
