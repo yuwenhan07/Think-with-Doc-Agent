@@ -6,6 +6,10 @@ debug/
 */__pycache__
 chunks/
 index_out/
+visulaize/runs/
 
 !demo/
 !demo/**/*
+
+data/
+.DS_Store
