@@ -2,6 +2,7 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional, Iterable
 
@@ -15,12 +16,17 @@ VLLM_MODEL = "/models/Qwen3-VL-Embedding-2B"
 VLLM_RUNNER = "pooling"
 IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
 _VLLM_CLIENT: Optional[LLM] = None
+VLLM_TP = int(os.environ.get("VLLM_TP_SIZE", "4"))
 
 
 def _get_vllm_client() -> LLM:
     global _VLLM_CLIENT
     if _VLLM_CLIENT is None:
-        _VLLM_CLIENT = LLM(model=VLLM_MODEL, runner=VLLM_RUNNER)
+        _VLLM_CLIENT = LLM(
+            model=VLLM_MODEL,
+            runner=VLLM_RUNNER,
+            tensor_parallel_size=VLLM_TP,
+        )
     return _VLLM_CLIENT
 
 
@@ -248,4 +254,3 @@ def search_image_blocks(
         "searched_pages": page_nos,
         "block_hits": block_hits,
     }
-
