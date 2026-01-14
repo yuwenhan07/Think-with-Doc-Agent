@@ -3,7 +3,7 @@ jsons/
 out/
 doc/
 debug/
-*/__pycache__
+__pycache__/
 chunks/
 index_out/
 visulaize/runs/
