@@ -8,7 +8,7 @@ from typing import Optional
 from PIL import Image
 from vllm import LLM
 
-VLLM_MODEL = "/models/Qwen3-VL-Embedding-2B"
+VLLM_MODEL = "/models/Qwen3-VL-Embedding-8B"
 VLLM_RUNNER = "pooling"
 IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
 _VLLM_CLIENT: Optional[LLM] = None
