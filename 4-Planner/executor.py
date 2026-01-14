@@ -105,6 +105,16 @@ class Executor:
                 "tool": "judge_answer",
                 "args": {"query": state.query, "context": state.last_context, "answer": state.last_answer},
             }
+        if state.last_tool == "judge_retrieval":
+            verdict = (state.last_observation or {}).get("verdict")
+            if verdict == "good":
+                if not state.last_context:
+                    return {"tool": "build_context", "args": {"max_blocks": self.budget.max_blocks_context}}
+                if not state.last_answer:
+                    return {"tool": "answer", "args": {"need_citations": True, "style": "short"}}
+        if state.last_tool == "build_context":
+            if state.last_context and not state.last_answer:
+                return {"tool": "answer", "args": {"need_citations": True, "style": "short"}}
         return None
 
     def _apply_budget(self, state: ExecutionState, tool: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -288,4 +298,24 @@ class Executor:
             if tool == "finalize":
                 return {"final": obs, "trace": state.trace}
 
-        return {"final": {"final_text": "Turn budget exceeded.", "citations": []}, "trace": state.trace}
+        if state.last_context:
+            ans_obs = get_skill("answer")(
+                {"context": state.last_context, "need_citations": True, "style": "short"},
+                self.ctx,
+                self.llm_config,
+            )
+            state.last_answer = ans_obs
+            self._record(state, "answer", {"style": "short"}, ans_obs)
+
+            judge_obs = get_skill("judge_answer")(
+                {"query": state.query, "context": state.last_context, "answer": state.last_answer},
+                self.ctx,
+                self.llm_config,
+            )
+            self._record(state, "judge_answer", {}, judge_obs)
+            if judge_obs.get("verdict") == "final":
+                final_obs = get_skill("finalize")({"answer": state.last_answer or {}}, self.ctx, self.llm_config)
+                self._record(state, "finalize", {}, final_obs)
+                return {"final": final_obs, "trace": state.trace}
+
+        return {"final": self._final_not_answerable(), "trace": state.trace}
