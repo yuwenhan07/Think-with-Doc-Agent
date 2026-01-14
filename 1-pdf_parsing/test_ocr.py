@@ -1,12 +1,12 @@
 from ocr import OCRConfig, process_document_file
 
-PDF_PATH = "../doc/2310.08560v2.pdf"
+PDF_PATH = "../demo/doc/2310.08560v2.pdf"
 
-OUT_DIR = "../imgs/" + PDF_PATH.split("/")[-1].replace(".pdf", "")
+OUT_DIR = "../demo/imgs/" + PDF_PATH.split("/")[-1].replace(".pdf", "")
 
-JSON_DIR = "../jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", ".json")
+JSON_DIR = "../demo/jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", ".json")
 
-OUTPUT_JSON = "../jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", "_ocr.json")
+OUTPUT_JSON = "../demo/jsons/" + PDF_PATH.split("/")[-1].replace(".pdf", "_ocr.json")
 
 render_json_path = JSON_DIR
 out_doc_path = OUTPUT_JSON
