@@ -8,8 +8,8 @@ from typing import Any, Dict, List
 @dataclass
 class LLMConfig:
     api_key_env: str = "QianFan_API_KEY"
-    base_url: str = "https://qianfan.baidubce.com/v2"
-    model_id: str = "qwen3-vl-235b-a22b-instruct"
+    base_url: str = "http://localhost:8003"
+    model_id: str = "Qwen3-VL-32B-Instruct "
     temperature: float = 0.2
     max_tokens: int = 512
 

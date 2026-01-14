@@ -29,8 +29,8 @@ class QianfanVLMClient:
         self,
         *,
         api_key_env: str = "QianFan_API_KEY",
-        base_url: str = "https://qianfan.baidubce.com/v2",
-        model_id: str = "qwen3-vl-235b-a22b-instruct",
+        base_url: str = "http://localhost:8003",
+        model_id: str = "qwen3-vl-32B",
         min_pixels: int = 512 * 32 * 32,
         max_pixels: int = 2048 * 32 * 32,
     ) -> None:
