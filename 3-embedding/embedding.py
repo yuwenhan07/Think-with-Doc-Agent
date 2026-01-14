@@ -1,71 +1,56 @@
-import os, json, base64
+import json
 from pathlib import Path
 import numpy as np
-import requests
 import faiss
-import time
 from collections import defaultdict
+from typing import Optional
 
+from PIL import Image
+from vllm import LLM
 
-QIANFAN_URL = "https://qianfan.baidubce.com/v2/embeddings"
-QIANFAN_MODEL = "gme-qwen2-vl-2b-instruct"
-QIANFAN_TOKEN = os.environ.get("QianFan_API_KEY")  
+VLLM_MODEL = "/models/Qwen3-VL-Embedding-2B"
+VLLM_RUNNER = "pooling"
+IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
+_VLLM_CLIENT: Optional[LLM] = None
 
-# ---- rate limit config ----
-QIANFAN_MIN_INTERVAL = 0.05  # seconds between requests (4 QPS)
-_QIANFAN_LAST_CALL_TS = 0.0
+def _get_vllm_client() -> LLM:
+    global _VLLM_CLIENT
+    if _VLLM_CLIENT is None:
+        _VLLM_CLIENT = LLM(model=VLLM_MODEL, runner=VLLM_RUNNER)
+    return _VLLM_CLIENT
 
 def l2_normalize(vec: np.ndarray) -> np.ndarray:
     denom = np.linalg.norm(vec) + 1e-12
     return vec / denom
 
-def _post_embeddings(inputs: list[dict]) -> list[np.ndarray]:
+def _embed_inputs(inputs: list[dict]) -> list[np.ndarray]:
     """
-    inputs: [{"text": "..."}] or [{"image": "<base64>"}] or [{"text":"...","image":"..."}]
+    inputs: vLLM embedding inputs with "prompt" and optional "multi_modal_data".
     return: [np.ndarray(d), ...]
     """
-    assert QIANFAN_TOKEN, "Missing env QianFan_API_KEY"
+    if not inputs:
+        return []
 
-    global _QIANFAN_LAST_CALL_TS
-    now = time.time()
-    wait = QIANFAN_MIN_INTERVAL - (now - _QIANFAN_LAST_CALL_TS)
-    if wait > 0:
-        time.sleep(wait)
-
-    payload = {"model": QIANFAN_MODEL, "input": inputs}
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {QIANFAN_TOKEN}",
-    }
-    resp = requests.post(QIANFAN_URL, headers=headers, data=json.dumps(payload), timeout=60)
-    _QIANFAN_LAST_CALL_TS = time.time()
-
-    if resp.status_code == 429:
-        time.sleep(2)
-        return _post_embeddings(inputs)
-
-    resp.raise_for_status()
-    data = resp.json()
-
-    # 这里按常见 embeddings 响应格式写法：你可打印一次 data 看实际字段名
-    # 典型是 data["data"][i]["embedding"]
-    out = []
-    for item in data.get("data", []):
-        emb = np.array(item["embedding"], dtype=np.float32)
+    outputs = _get_vllm_client().embed(inputs)
+    out: list[np.ndarray] = []
+    for item in outputs:
+        emb = np.array(item.outputs.embedding, dtype=np.float32)
         out.append(emb)
     if not out:
-        raise RuntimeError(f"Empty embedding response: {data}")
+        raise RuntimeError("Empty embedding response from vLLM.")
     return out
 
 def embed_text(text: str) -> np.ndarray:
-    return _post_embeddings([{"text": text}])[0]
+    return _embed_inputs([{"prompt": text}])[0]
 
 def embed_image(image_path: str) -> np.ndarray:
     p = Path(image_path)
     if not p.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
-    b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
-    return _post_embeddings([{"image": b64}])[0]
+    image = Image.open(p).convert("RGB")
+    return _embed_inputs([
+        {"prompt": IMAGE_PLACEHOLDER, "multi_modal_data": {"image": image}}
+    ])[0]
 
 def build_faiss_cosine(vectors: list[np.ndarray]) -> faiss.Index:
     # cosine = inner product after L2 normalize
@@ -146,7 +131,7 @@ def build_indexes(input_json: str, out_dir: str):
 
     manifest = {
         "doc_id": doc.get("doc_id"),
-        "model": QIANFAN_MODEL,
+        "model": VLLM_MODEL,
         "pages": []
     }
 
