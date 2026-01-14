@@ -1,17 +1,24 @@
-import os
 import json
-import base64
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional, Iterable
 
 import numpy as np
-import requests
 import faiss
 
+from PIL import Image
+from vllm import LLM
 
-QIANFAN_URL = "https://qianfan.baidubce.com/v2/embeddings"
-QIANFAN_MODEL = "gme-qwen2-vl-2b-instruct"
-QIANFAN_TOKEN = os.environ.get("QianFan_API_KEY")
+VLLM_MODEL = "/models/Qwen3-VL-Embedding-2B"
+VLLM_RUNNER = "pooling"
+IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
+_VLLM_CLIENT: Optional[LLM] = None
+
+
+def _get_vllm_client() -> LLM:
+    global _VLLM_CLIENT
+    if _VLLM_CLIENT is None:
+        _VLLM_CLIENT = LLM(model=VLLM_MODEL, runner=VLLM_RUNNER)
+    return _VLLM_CLIENT
 
 
 def l2_normalize(vec: np.ndarray) -> np.ndarray:
@@ -35,29 +42,21 @@ def load_json(path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def _post_embeddings(inputs: list[dict]) -> List[np.ndarray]:
-    assert QIANFAN_TOKEN, "Missing env QianFan_API_KEY"
+def _embed_inputs(inputs: list[dict]) -> List[np.ndarray]:
+    if not inputs:
+        return []
 
-    payload = {"model": QIANFAN_MODEL, "input": inputs}
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {QIANFAN_TOKEN}",
-    }
-    resp = requests.post(QIANFAN_URL, headers=headers, data=json.dumps(payload), timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-
-    # 常见返回：{"data":[{"embedding":[...], ...}, ...]}
-    out = []
-    for item in data.get("data", []):
-        out.append(np.array(item["embedding"], dtype=np.float32))
+    outputs = _get_vllm_client().embed(inputs)
+    out: List[np.ndarray] = []
+    for item in outputs:
+        out.append(np.array(item.outputs.embedding, dtype=np.float32))
     if not out:
-        raise RuntimeError(f"Empty embedding response: {data}")
+        raise RuntimeError("Empty embedding response from vLLM.")
     return out
 
 
 def embed_text(text: str) -> np.ndarray:
-    v = _post_embeddings([{"text": text}])[0]
+    v = _embed_inputs([{"prompt": text}])[0]
     return l2_normalize(v.astype(np.float32))
 
 
@@ -65,8 +64,10 @@ def embed_image(image_path: str) -> np.ndarray:
     p = Path(image_path)
     if not p.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
-    b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
-    v = _post_embeddings([{"image": b64}])[0]
+    image = Image.open(p).convert("RGB")
+    v = _embed_inputs([
+        {"prompt": IMAGE_PLACEHOLDER, "multi_modal_data": {"image": image}}
+    ])[0]
     return l2_normalize(v.astype(np.float32))
 
 
@@ -244,5 +245,4 @@ def search_image_blocks(
         "searched_pages": page_nos,
         "block_hits": block_hits,
     }
-
 
