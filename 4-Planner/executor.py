@@ -94,6 +94,10 @@ class Executor:
         state.last_tool = tool
         state.last_observation = obs
 
+    def _record_planner(self, state: ExecutionState, trace: Dict[str, Any]) -> None:
+        state.history.append({"tool": "planner", "summary": {"parse_error": trace.get("parse_error")}})
+        state.trace.append({"tool": "planner", "args": {"turn": state.turn}, "observation": trace})
+
     def _force_judge(self, state: ExecutionState) -> Optional[Dict[str, Any]]:
         if state.last_tool == "search":
             return {
@@ -107,10 +111,10 @@ class Executor:
             }
         if state.last_tool == "judge_retrieval":
             verdict = (state.last_observation or {}).get("verdict")
-            if verdict == "good":
-                if not state.last_context:
+            if verdict in ("good", "uncertain"):
+                if state.last_search_result and not state.last_context:
                     return {"tool": "build_context", "args": {"max_blocks": self.budget.max_blocks_context}}
-                if not state.last_answer:
+                if state.last_context and not state.last_answer:
                     return {"tool": "answer", "args": {"need_citations": True, "style": "short"}}
         if state.last_tool == "build_context":
             if state.last_context and not state.last_answer:
@@ -207,13 +211,20 @@ class Executor:
             if forced:
                 plan = forced
             else:
-                plan = self.planner.plan({
-                    "query": state.query,
-                    "turn": state.turn,
-                    "budget": self._budget_snapshot(state),
-                    "history": state.history,
-                    "last_observation": state.last_observation,
-                })
+                try:
+                    plan, planner_trace = self.planner.plan_with_trace({
+                        "query": state.query,
+                        "turn": state.turn,
+                        "budget": self._budget_snapshot(state),
+                        "history": state.history,
+                        "last_observation": state.last_observation,
+                    })
+                    self._record_planner(state, planner_trace)
+                except Exception as exc:
+                    state.trace.append({"tool": "planner_error", "args": {"turn": state.turn}, "observation": {"error": str(exc)}})
+                    return {"final": {"final_text": f"Planner failed: {exc}", "citations": []}, "trace": state.trace}
+                if not plan:
+                    return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
 
             if "final" in plan:
                 final_obj = plan.get("final")
