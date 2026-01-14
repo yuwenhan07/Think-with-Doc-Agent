@@ -14,6 +14,66 @@ def _join_logs(lines: List[str]) -> str:
     return "\n".join(lines)
 
 
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _extract_retrieval(
+    trace: List[Dict[str, object]],
+) -> Tuple[List[Tuple[str, str]], str]:
+    search_obs: Optional[Dict[str, object]] = None
+    for item in reversed(trace):
+        if item.get("tool") == "search":
+            search_obs = item.get("observation")  # type: ignore[assignment]
+            break
+
+    if not isinstance(search_obs, dict):
+        return [], "No retrieval results."
+
+    block_hits = list(search_obs.get("block_hits", []))
+    summary_hits = list(search_obs.get("summary_hits", []))
+
+    images: List[Tuple[str, str]] = []
+    text_lines: List[str] = []
+
+    for hit in block_hits:
+        if not isinstance(hit, dict):
+            continue
+        score = float(hit.get("score") or 0.0)
+        page = hit.get("page_number")
+        htype = hit.get("type") or "block"
+        text = (hit.get("text") or "").strip()
+
+        if htype != "text":
+            asset_path = hit.get("asset_path")
+            if asset_path:
+                caption = f"p{page} {htype} {score:.3f}"
+                if text:
+                    caption += f" | {_truncate(text, 80)}"
+                images.append((str(asset_path), caption))
+
+        if text:
+            text_lines.append(
+                f"- [block {htype}] p{page} score {score:.3f}: {_truncate(text, 300)}"
+            )
+
+    for hit in summary_hits:
+        if not isinstance(hit, dict):
+            continue
+        score = float(hit.get("score") or 0.0)
+        page = hit.get("page_number")
+        summary = (hit.get("summary") or "").strip()
+        if summary:
+            text_lines.append(
+                f"- [summary] p{page} score {score:.3f}: {_truncate(summary, 300)}"
+            )
+
+    text_md = "\n".join(text_lines[:30]) if text_lines else "No text hits."
+    return images, text_md
+
+
 def _append_jsonl(path: Path, payload: Dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -55,11 +115,11 @@ def process_pdf(pdf_file) -> Tuple[str, Optional[Dict[str, str]]]:
 def ask_query(
     query: str,
     artifacts_state: Optional[Dict[str, str]],
-) -> Tuple[str, str, Dict[str, object], List[Dict[str, object]]]:
+) -> Tuple[str, str, Dict[str, object], List[Dict[str, object]], List[Tuple[str, str]], str]:
     if not artifacts_state:
-        return "Please process a PDF first.", "", {}, []
+        return "Please process a PDF first.", "", {}, [], [], "No retrieval results."
     if not query or not query.strip():
-        return "Please enter a query.", "", {}, []
+        return "Please enter a query.", "", {}, [], [], "No retrieval results."
 
     logs: List[str] = []
 
@@ -71,13 +131,14 @@ def ask_query(
         result = run_query(query.strip(), artifacts, logger=log)
     except Exception as exc:  # noqa: BLE001
         logs.append(f"Query failed: {exc}")
-        return _join_logs(logs), "", {}, []
+        return _join_logs(logs), "", {}, [], [], "No retrieval results."
 
     final = result.get("final", {}) if isinstance(result, dict) else {}
     trace = result.get("trace", []) if isinstance(result, dict) else []
     final_text = ""
     if isinstance(final, dict):
         final_text = str(final.get("final_text") or "")
+    retrieval_images, retrieval_text = _extract_retrieval(trace if isinstance(trace, list) else [])
     _append_jsonl(
         Path(artifacts.run_dir) / "session" / "events.jsonl",
         {
@@ -88,7 +149,7 @@ def ask_query(
             "trace": trace,
         },
     )
-    return _join_logs(logs), final_text, final, trace
+    return _join_logs(logs), final_text, final, trace, retrieval_images, retrieval_text
 
 
 def build_ui() -> gr.Blocks:
@@ -110,9 +171,20 @@ def build_ui() -> gr.Blocks:
         query = gr.Textbox(label="Query", placeholder="Ask about the document...")
         ask_btn = gr.Button("Run Query")
 
-        answer = gr.Markdown()
-        final_json = gr.JSON(label="Final Result")
-        trace_json = gr.JSON(label="Planner/Executor Trace")
+        with gr.Row():
+            with gr.Column(scale=3):
+                answer = gr.Markdown()
+                final_json = gr.JSON(label="Final Result")
+                trace_json = gr.JSON(label="Planner/Executor Trace")
+            with gr.Column(scale=2):
+                gr.Markdown("## Retrieval Results")
+                retrieval_images = gr.Gallery(
+                    label="Image Hits",
+                    columns=2,
+                    height=360,
+                    show_label=True,
+                )
+                retrieval_text = gr.Markdown()
 
         process_btn.click(
             process_pdf,
@@ -123,7 +195,7 @@ def build_ui() -> gr.Blocks:
         ask_btn.click(
             ask_query,
             inputs=[query, artifacts_state],
-            outputs=[status, answer, final_json, trace_json],
+            outputs=[status, answer, final_json, trace_json, retrieval_images, retrieval_text],
         )
 
     return demo
