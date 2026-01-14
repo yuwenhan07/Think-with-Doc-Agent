@@ -12,7 +12,7 @@ from openai import OpenAI
 @dataclass
 class PlannerConfig:
     api_key_env: str = "QianFan_API_KEY"
-    base_url: str = "http://localhost:8003"
+    base_url: str = "http://localhost:8003/v1"
     model_id: str = "Qwen3-VL-32B-Instruct "
     temperature: float = 0.2
     max_tokens: int = 256
@@ -21,9 +21,11 @@ class PlannerConfig:
 class LLMPlanner:
     def __init__(self, config: Optional[PlannerConfig] = None) -> None:
         self.config = config or PlannerConfig()
-        api_key = os.environ.get(self.config.api_key_env)
-        if not api_key:
-            raise RuntimeError(f"Missing API key in env var: {self.config.api_key_env}")
+        api_key = (
+            os.environ.get(self.config.api_key_env)
+            or os.environ.get("OPENAI_API_KEY")
+            or "EMPTY"
+        )
         self.client = OpenAI(base_url=self.config.base_url, api_key=api_key)
 
     def _extract_balanced_json(self, text: str) -> Optional[str]:

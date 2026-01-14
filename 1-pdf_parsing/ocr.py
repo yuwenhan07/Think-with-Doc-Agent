@@ -23,8 +23,12 @@ def encode_image(image_path):
 def inference_with_api(image_path, prompt, model_id="Qwen3-VL-32B-Instruct ", min_pixels=512*32*32, max_pixels=2048*32*32):
     base64_image = encode_image(image_path)
     client = OpenAI(
-        base_url="http://localhost:8003",
-        api_key=os.environ.get("QianFan_API_KEY")
+        base_url="http://localhost:8003/v1",
+        api_key=(
+            os.environ.get("QianFan_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "EMPTY"
+        ),
     )
 
     messages=[

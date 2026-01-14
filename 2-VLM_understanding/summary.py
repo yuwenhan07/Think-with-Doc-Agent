@@ -29,14 +29,16 @@ class QianfanVLMClient:
         self,
         *,
         api_key_env: str = "QianFan_API_KEY",
-        base_url: str = "http://localhost:8003",
+        base_url: str = "http://localhost:8003/v1",
         model_id: str = "qwen3-vl-32B",
         min_pixels: int = 512 * 32 * 32,
         max_pixels: int = 2048 * 32 * 32,
     ) -> None:
-        api_key = os.environ.get(api_key_env)
-        if not api_key:
-            raise RuntimeError(f"Missing API key in env var: {api_key_env}")
+        api_key = (
+            os.environ.get(api_key_env)
+            or os.environ.get("OPENAI_API_KEY")
+            or "EMPTY"
+        )
 
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model_id = model_id

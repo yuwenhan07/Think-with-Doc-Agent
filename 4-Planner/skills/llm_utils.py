@@ -11,9 +11,11 @@ from .context import LLMConfig
 
 
 def get_llm_client(cfg: LLMConfig) -> OpenAI:
-    api_key = os.environ.get(cfg.api_key_env)
-    if not api_key:
-        raise RuntimeError(f"Missing API key in env var: {cfg.api_key_env}")
+    api_key = (
+        os.environ.get(cfg.api_key_env)
+        or os.environ.get("OPENAI_API_KEY")
+        or "EMPTY"
+    )
     return OpenAI(base_url=cfg.base_url, api_key=api_key)
 
 
