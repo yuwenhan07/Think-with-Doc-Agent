@@ -30,7 +30,7 @@ class QianfanVLMClient:
         *,
         api_key_env: str = "QianFan_API_KEY",
         base_url: str = "http://localhost:8003/v1",
-        model_id: str = "qwen3-vl-32B",
+        model_id: str = "/models/Qwen3-VL-32B-Instruct",
         min_pixels: int = 512 * 32 * 32,
         max_pixels: int = 2048 * 32 * 32,
     ) -> None:
