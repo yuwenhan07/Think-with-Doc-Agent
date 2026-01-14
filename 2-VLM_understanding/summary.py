@@ -37,6 +37,7 @@ class QianfanVLMClient:
         api_key = (
             os.environ.get(api_key_env)
             or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("QIANFAN_API_KEY")
             or "EMPTY"
         )
 
