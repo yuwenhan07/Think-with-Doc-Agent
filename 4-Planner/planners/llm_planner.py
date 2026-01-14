@@ -15,7 +15,7 @@ class PlannerConfig:
     base_url: str = "http://localhost:8003/v1"
     model_id: str = "/models/Qwen3-VL-32B-Instruct"
     temperature: float = 0.2
-    max_tokens: int = 256
+    max_tokens: int = 1024
 
 
 class LLMPlanner:
