@@ -94,6 +94,10 @@ class Executor:
         state.last_tool = tool
         state.last_observation = obs
 
+    def _record_planner(self, state: ExecutionState, trace: Dict[str, Any]) -> None:
+        state.history.append({"tool": "planner", "summary": {"parse_error": trace.get("parse_error")}})
+        state.trace.append({"tool": "planner", "args": {"turn": state.turn}, "observation": trace})
+
     def _force_judge(self, state: ExecutionState) -> Optional[Dict[str, Any]]:
         if state.last_tool == "search":
             return {
@@ -105,6 +109,16 @@ class Executor:
                 "tool": "judge_answer",
                 "args": {"query": state.query, "context": state.last_context, "answer": state.last_answer},
             }
+        if state.last_tool == "judge_retrieval":
+            verdict = (state.last_observation or {}).get("verdict")
+            if verdict in ("good", "uncertain"):
+                if state.last_search_result and not state.last_context:
+                    return {"tool": "build_context", "args": {"max_blocks": self.budget.max_blocks_context}}
+                if state.last_context and not state.last_answer:
+                    return {"tool": "answer", "args": {"need_citations": True, "style": "short"}}
+        if state.last_tool == "build_context":
+            if state.last_context and not state.last_answer:
+                return {"tool": "answer", "args": {"need_citations": True, "style": "short"}}
         return None
 
     def _apply_budget(self, state: ExecutionState, tool: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -197,13 +211,20 @@ class Executor:
             if forced:
                 plan = forced
             else:
-                plan = self.planner.plan({
-                    "query": state.query,
-                    "turn": state.turn,
-                    "budget": self._budget_snapshot(state),
-                    "history": state.history,
-                    "last_observation": state.last_observation,
-                })
+                try:
+                    plan, planner_trace = self.planner.plan_with_trace({
+                        "query": state.query,
+                        "turn": state.turn,
+                        "budget": self._budget_snapshot(state),
+                        "history": state.history,
+                        "last_observation": state.last_observation,
+                    })
+                    self._record_planner(state, planner_trace)
+                except Exception as exc:
+                    state.trace.append({"tool": "planner_error", "args": {"turn": state.turn}, "observation": {"error": str(exc)}})
+                    return {"final": {"final_text": f"Planner failed: {exc}", "citations": []}, "trace": state.trace}
+                if not plan:
+                    return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
 
             if "final" in plan:
                 final_obj = plan.get("final")
@@ -288,4 +309,24 @@ class Executor:
             if tool == "finalize":
                 return {"final": obs, "trace": state.trace}
 
-        return {"final": {"final_text": "Turn budget exceeded.", "citations": []}, "trace": state.trace}
+        if state.last_context:
+            ans_obs = get_skill("answer")(
+                {"context": state.last_context, "need_citations": True, "style": "short"},
+                self.ctx,
+                self.llm_config,
+            )
+            state.last_answer = ans_obs
+            self._record(state, "answer", {"style": "short"}, ans_obs)
+
+            judge_obs = get_skill("judge_answer")(
+                {"query": state.query, "context": state.last_context, "answer": state.last_answer},
+                self.ctx,
+                self.llm_config,
+            )
+            self._record(state, "judge_answer", {}, judge_obs)
+            if judge_obs.get("verdict") == "final":
+                final_obs = get_skill("finalize")({"answer": state.last_answer or {}}, self.ctx, self.llm_config)
+                self._record(state, "finalize", {}, final_obs)
+                return {"final": final_obs, "trace": state.trace}
+
+        return {"final": self._final_not_answerable(), "trace": state.trace}

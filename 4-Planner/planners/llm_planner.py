@@ -90,6 +90,7 @@ class LLMPlanner:
             "Constraints:\n"
             "- After answer, must call judge_answer.\n"
             "- After search, must call judge_retrieval.\n"
+            "- If last_observation is judge_retrieval with verdict=good, you must call build_context then answer then judge_answer; do not finalize early.\n"
             "- Args must be minimal. Do NOT include full passages, blocks, or long text.\n"
             "- Use only small scalars and small lists (e.g., query, k_pages, filters).\n"
             f"Query: {state.get('query', '')}\n"
@@ -100,6 +101,12 @@ class LLMPlanner:
         )
 
     def plan(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        plan, _ = self.plan_with_trace(state)
+        if not plan:
+            raise ValueError("Planner output is not valid JSON.")
+        return plan
+
+    def plan_with_trace(self, state: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
         prompt = self._build_prompt(state)
         completion = self.client.chat.completions.create(
             model=self.config.model_id,
@@ -109,8 +116,14 @@ class LLMPlanner:
         )
         content = completion.choices[0].message.content or ""
         parsed = self._safe_json(content)
+        trace: Dict[str, Any] = {
+            "raw": content,
+            "parse_error": None,
+            "fallback": None,
+        }
         if not parsed:
             parsed = self._tool_from_text(content)
+            trace["fallback"] = "tool_from_text"
         if not parsed:
-            raise ValueError(f"Planner output is not valid JSON: {content}")
-        return parsed
+            trace["parse_error"] = "invalid_json"
+        return parsed, trace
