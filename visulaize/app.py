@@ -74,6 +74,42 @@ def _extract_retrieval(
     return images, text_md
 
 
+def _extract_planner_executor_io(
+    trace: List[Dict[str, object]],
+) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
+    planner_io: List[Dict[str, object]] = []
+    executor_io: List[Dict[str, object]] = []
+    for item in trace:
+        tool = item.get("tool")
+        if tool == "planner":
+            args = item.get("args", {})
+            obs = item.get("observation", {})
+            planner_io.append({
+                "turn": args.get("turn") if isinstance(args, dict) else None,
+                "input": args.get("input") if isinstance(args, dict) else None,
+                "output": obs.get("output") if isinstance(obs, dict) else None,
+                "raw": obs.get("raw") if isinstance(obs, dict) else None,
+                "parse_error": obs.get("parse_error") if isinstance(obs, dict) else None,
+                "fallback": obs.get("fallback") if isinstance(obs, dict) else None,
+            })
+            continue
+        if tool == "planner_error":
+            args = item.get("args", {})
+            obs = item.get("observation", {})
+            planner_io.append({
+                "turn": args.get("turn") if isinstance(args, dict) else None,
+                "input": args.get("input") if isinstance(args, dict) else None,
+                "error": obs.get("error") if isinstance(obs, dict) else None,
+            })
+            continue
+        executor_io.append({
+            "tool": tool,
+            "args": item.get("args"),
+            "observation": item.get("observation"),
+        })
+    return planner_io, executor_io
+
+
 def _append_jsonl(path: Path, payload: Dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -115,11 +151,11 @@ def process_pdf(pdf_file) -> Tuple[str, Optional[Dict[str, str]]]:
 def ask_query(
     query: str,
     artifacts_state: Optional[Dict[str, str]],
-) -> Tuple[str, str, Dict[str, object], List[Dict[str, object]], List[Tuple[str, str]], str]:
+) -> Tuple[str, str, Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]], List[Tuple[str, str]], str]:
     if not artifacts_state:
-        return "Please process a PDF first.", "", {}, [], [], "No retrieval results."
+        return "Please process a PDF first.", "", {}, [], [], [], [], "No retrieval results."
     if not query or not query.strip():
-        return "Please enter a query.", "", {}, [], [], "No retrieval results."
+        return "Please enter a query.", "", {}, [], [], [], [], "No retrieval results."
 
     logs: List[str] = []
 
@@ -131,13 +167,14 @@ def ask_query(
         result = run_query(query.strip(), artifacts, logger=log)
     except Exception as exc:  # noqa: BLE001
         logs.append(f"Query failed: {exc}")
-        return _join_logs(logs), "", {}, [], [], "No retrieval results."
+        return _join_logs(logs), "", {}, [], [], [], [], "No retrieval results."
 
     final = result.get("final", {}) if isinstance(result, dict) else {}
     trace = result.get("trace", []) if isinstance(result, dict) else []
     final_text = ""
     if isinstance(final, dict):
         final_text = str(final.get("final_text") or "")
+    planner_io, executor_io = _extract_planner_executor_io(trace if isinstance(trace, list) else [])
     retrieval_images, retrieval_text = _extract_retrieval(trace if isinstance(trace, list) else [])
     _append_jsonl(
         Path(artifacts.run_dir) / "session" / "events.jsonl",
@@ -149,7 +186,7 @@ def ask_query(
             "trace": trace,
         },
     )
-    return _join_logs(logs), final_text, final, trace, retrieval_images, retrieval_text
+    return _join_logs(logs), final_text, final, trace, planner_io, executor_io, retrieval_images, retrieval_text
 
 
 def build_ui() -> gr.Blocks:
@@ -177,6 +214,9 @@ def build_ui() -> gr.Blocks:
                 final_json = gr.JSON(label="Final Result")
                 trace_json = gr.JSON(label="Planner/Executor Trace")
             with gr.Column(scale=2):
+                gr.Markdown("## Planner/Executor IO")
+                planner_io = gr.JSON(label="Planner IO (Raw)")
+                executor_io = gr.JSON(label="Executor IO (Raw)")
                 gr.Markdown("## Retrieval Results")
                 retrieval_images = gr.Gallery(
                     label="Image Hits",
@@ -195,7 +235,16 @@ def build_ui() -> gr.Blocks:
         ask_btn.click(
             ask_query,
             inputs=[query, artifacts_state],
-            outputs=[status, answer, final_json, trace_json, retrieval_images, retrieval_text],
+            outputs=[
+                status,
+                answer,
+                final_json,
+                trace_json,
+                planner_io,
+                executor_io,
+                retrieval_images,
+                retrieval_text,
+            ],
         )
 
     return demo

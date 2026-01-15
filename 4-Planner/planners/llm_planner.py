@@ -88,7 +88,6 @@ class LLMPlanner:
             "Constraints:\n"
             "- After answer, must call judge_answer.\n"
             "- After search, must call judge_retrieval.\n"
-            "- If last_observation is judge_retrieval with verdict=good, you must call build_context then answer then judge_answer; do not finalize early.\n"
             "- Args must be minimal. Do NOT include full passages, blocks, or long text.\n"
             "- Use only small scalars and small lists (e.g., query, k_pages, filters).\n"
             f"Query: {state.get('query', '')}\n"
