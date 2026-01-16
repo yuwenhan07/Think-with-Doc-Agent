@@ -1,3 +1,7 @@
+"""
+registry.py
+技能路由表，把工具名映射到具体的执行函数
+"""
 from __future__ import annotations
 
 from typing import Callable, Dict

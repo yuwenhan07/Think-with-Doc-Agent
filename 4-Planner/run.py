@@ -1,3 +1,14 @@
+"""
+run.py
+命令行入口 + 配置文件 + 跑一次执行
+query: 用户输入的查询
+index_dir: 索引文件夹路径
+asset_base_dir: 资源文件夹路径
+max_turns: 最大对话轮数
+max_search_calls: 最大搜索调用次数
+max_rewrite_calls: 最大重写调用次数
+max_blocks_context: 最大上下文块数
+"""
 from __future__ import annotations
 
 import argparse
@@ -5,6 +16,7 @@ import json
 from pathlib import Path
 
 from executor import BudgetConfig, Executor
+# planners 和 skills 是两个文件夹，分别在两个文件夹的 __init__.py 中注册了对应的包与函数，可以直接调用
 from planners import PlannerConfig
 from skills import LLMConfig
 
@@ -29,6 +41,7 @@ def main() -> None:
         max_blocks_context=args.max_blocks_context,
     )
 
+    # * Executor 是执行器，负责执行整个对话流程，传入配置参数，包括索引路径、资源路径、规划器配置、LLM配置和预算配置
     executor = Executor(
         index_dir=Path(args.index_dir),
         asset_base_dir=Path(args.asset_base_dir),
