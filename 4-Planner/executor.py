@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -88,15 +89,85 @@ class Executor:
             "max_blocks_context": self.budget.max_blocks_context,
         }
 
+    def _summarize_history(self, state: ExecutionState, limit: int = 8) -> List[Dict[str, Any]]:
+        if limit <= 0:
+            return []
+        return state.history[-limit:]
+
+    def _summarize_observation(self, state: ExecutionState) -> Dict[str, Any]:
+        if not state.last_observation or not state.last_tool:
+            return {}
+        obs = state.last_observation
+        if state.last_tool == "search":
+            stats = obs.get("stats", {}) if isinstance(obs, dict) else {}
+            return {
+                "tool": "search",
+                "stats": {
+                    "block_hits": stats.get("block_hits"),
+                    "has_abstract": stats.get("has_abstract"),
+                },
+                "candidate_pages": obs.get("candidate_pages") if isinstance(obs, dict) else None,
+            }
+        if state.last_tool == "build_context":
+            context = obs.get("context", {}) if isinstance(obs, dict) else {}
+            evidence = context.get("evidence", []) if isinstance(context, dict) else []
+            pages = []
+            for item in evidence:
+                if not isinstance(item, dict):
+                    continue
+                page = item.get("page")
+                if page is not None:
+                    pages.append(page)
+            pages = sorted(set(pages))
+            return {
+                "tool": "build_context",
+                "evidence_count": len(evidence) if isinstance(evidence, list) else 0,
+                "pages": pages[:10],
+            }
+        if state.last_tool == "judge_retrieval":
+            return {
+                "tool": "judge_retrieval",
+                "verdict": obs.get("verdict") if isinstance(obs, dict) else None,
+                "suggestions": obs.get("suggestions") if isinstance(obs, dict) else None,
+            }
+        if state.last_tool == "answer":
+            return {
+                "tool": "answer",
+                "answer_preview": (obs.get("answer") if isinstance(obs, dict) else None),
+                "confidence": obs.get("confidence") if isinstance(obs, dict) else None,
+            }
+        if state.last_tool == "judge_answer":
+            return {
+                "tool": "judge_answer",
+                "verdict": obs.get("verdict") if isinstance(obs, dict) else None,
+                "issues": obs.get("issues") if isinstance(obs, dict) else None,
+            }
+        return {"tool": state.last_tool}
+
     def _record(self, state: ExecutionState, tool: str, args: Dict[str, Any], obs: Dict[str, Any]) -> None:
         state.history.append({"tool": tool, "summary": {k: obs.get(k) for k in ("verdict", "stats", "issues") if k in obs}})
         state.trace.append({"tool": tool, "args": args, "observation": obs})
         state.last_tool = tool
         state.last_observation = obs
 
-    def _record_planner(self, state: ExecutionState, trace: Dict[str, Any]) -> None:
+    def _record_planner(
+        self,
+        state: ExecutionState,
+        plan_input: Dict[str, Any],
+        plan_output: Optional[Dict[str, Any]],
+        trace: Dict[str, Any],
+    ) -> None:
         state.history.append({"tool": "planner", "summary": {"parse_error": trace.get("parse_error")}})
-        state.trace.append({"tool": "planner", "args": {"turn": state.turn}, "observation": trace})
+        state.trace.append({
+            "tool": "planner",
+            "args": {"turn": state.turn, "input": plan_input},
+            "observation": {
+                "output": plan_output,
+                "raw": trace.get("raw"),
+                "parse_error": trace.get("parse_error"),
+                "fallback": trace.get("fallback"),
+            },
+        })
 
     def _force_judge(self, state: ExecutionState) -> Optional[Dict[str, Any]]:
         if state.last_tool == "search":
@@ -109,16 +180,19 @@ class Executor:
                 "tool": "judge_answer",
                 "args": {"query": state.query, "context": state.last_context, "answer": state.last_answer},
             }
-        if state.last_tool == "judge_retrieval":
-            verdict = (state.last_observation or {}).get("verdict")
-            if verdict in ("good", "uncertain"):
-                if state.last_search_result and not state.last_context:
-                    return {"tool": "build_context", "args": {"max_blocks": self.budget.max_blocks_context}}
-                if state.last_context and not state.last_answer:
-                    return {"tool": "answer", "args": {"need_citations": True, "style": "short"}}
-        if state.last_tool == "build_context":
+        return None
+
+    def _fallback_plan(self, state: ExecutionState, plan: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if "final" in plan:
+            if state.last_search_result and not state.last_context:
+                return {"tool": "build_context", "args": {"max_blocks": self.budget.max_blocks_context}}
             if state.last_context and not state.last_answer:
                 return {"tool": "answer", "args": {"need_citations": True, "style": "short"}}
+            if state.last_answer and state.last_tool != "judge_answer":
+                return {
+                    "tool": "judge_answer",
+                    "args": {"query": state.query, "context": state.last_context, "answer": state.last_answer},
+                }
         return None
 
     def _apply_budget(self, state: ExecutionState, tool: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -212,19 +286,32 @@ class Executor:
                 plan = forced
             else:
                 try:
-                    plan, planner_trace = self.planner.plan_with_trace({
+                    planner_input = {
                         "query": state.query,
                         "turn": state.turn,
                         "budget": self._budget_snapshot(state),
-                        "history": state.history,
-                        "last_observation": state.last_observation,
-                    })
-                    self._record_planner(state, planner_trace)
+                        "history": self._summarize_history(state),
+                        "last_observation": self._summarize_observation(state),
+                    }
+                    plan, planner_trace = self.planner.plan_with_trace(planner_input)
+                    self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
                 except Exception as exc:
-                    state.trace.append({"tool": "planner_error", "args": {"turn": state.turn}, "observation": {"error": str(exc)}})
+                    state.trace.append({
+                        "tool": "planner_error",
+                        "args": {"turn": state.turn, "input": planner_input},
+                        "observation": {"error": str(exc)},
+                    })
                     return {"final": {"final_text": f"Planner failed: {exc}", "citations": []}, "trace": state.trace}
                 if not plan:
-                    return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
+                    fallback = self._fallback_plan(state, {"final": {}})
+                    if fallback:
+                        plan = fallback
+                    else:
+                        return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
+
+            fallback = self._fallback_plan(state, plan)
+            if fallback:
+                plan = fallback
 
             if "final" in plan:
                 final_obj = plan.get("final")
