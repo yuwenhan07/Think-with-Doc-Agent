@@ -40,13 +40,20 @@ class ExecutionState:
     search_query_counts: Dict[str, int] = field(default_factory=dict)
 
 
+_SEARCH_MODULE: Optional[Any] = None
+
+
 def _load_search_module(root: Path):
+    global _SEARCH_MODULE
+    if _SEARCH_MODULE is not None:
+        return _SEARCH_MODULE
     search_path = root / "3-embedding" / "search.py"
     spec = importlib.util.spec_from_file_location("search_module", search_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Failed to load search module at {search_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    _SEARCH_MODULE = module
     return module
 
 
