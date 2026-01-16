@@ -21,9 +21,8 @@ def _read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, data: object) -> None:
+def _ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _find_pdf(root_pdf: Path, filename: str) -> Optional[Path]:
@@ -107,83 +106,12 @@ def main() -> None:
     )
 
     cache = _build_executor_cache()
-    results: List[Dict[str, object]] = []
     limit = args.limit if args.limit and args.limit > 0 else len(items)
 
-    for item in items[:limit]:
-        if not isinstance(item, dict):
-            results.append({"error": "invalid_item_type"})
-            continue
-        filename = item.get("doc_id")
-        query = item.get(args.query_field)
-        uuid = item.get("uuid")
+    out_path = Path(args.output)
+    _ensure_parent(out_path)
 
-        if not filename or not query:
-            results.append({
-                "uuid": uuid,
-                "doc_id": filename,
-                "query": query,
-                "error": "missing_doc_id_or_query",
-            })
-            continue
-
-        pdf_path = _find_pdf(root_pdf, str(filename))
-        if not pdf_path:
-            results.append({
-                "uuid": uuid,
-                "doc_id": filename,
-                "query": query,
-                "error": "pdf_not_found",
-            })
-            continue
-
-        doc_id = compute_doc_id(str(pdf_path))
-        doc_hash = doc_id.split(":")[-1]
-        run_dir = runs_root / doc_hash
-        artifacts = _load_artifacts(run_dir)
-        if not artifacts:
-            results.append({
-                "uuid": uuid,
-                "doc_id": filename,
-                "query": query,
-                "pdf_path": str(pdf_path),
-                "doc_hash": doc_hash,
-                "error": "artifacts_not_found",
-            })
-            continue
-
-        try:
-            executor = _get_executor(
-                cache,
-                index_dir=Path(artifacts["index_dir"]),
-                asset_base_dir=Path(artifacts["asset_base_dir"]),
-                budget=budget,
-                planner_cfg=planner_cfg,
-                llm_cfg=llm_cfg,
-            )
-            result = executor.run(str(query))
-            results.append({
-                "uuid": uuid,
-                "doc_id": filename,
-                "query": query,
-                "pdf_path": str(pdf_path),
-                "doc_hash": doc_hash,
-                "artifacts": artifacts,
-                "final": result.get("final"),
-                "trace": result.get("trace", []),
-            })
-        except Exception as exc:
-            results.append({
-                "uuid": uuid,
-                "doc_id": filename,
-                "query": query,
-                "pdf_path": str(pdf_path),
-                "doc_hash": doc_hash,
-                "artifacts": artifacts,
-                "error": str(exc),
-            })
-
-    payload = {
+    run_meta = {
         "input_json": str(Path(args.input_json)),
         "root_pdf": str(root_pdf),
         "runs_root": str(runs_root),
@@ -191,10 +119,92 @@ def main() -> None:
         "planner_config": asdict(planner_cfg),
         "llm_config": asdict(llm_cfg),
         "budget": asdict(budget),
-        "results": results,
     }
-    _write_json(Path(args.output), payload)
-    print(f"Saved results to {args.output}")
+
+    with out_path.open("w", encoding="utf-8") as out_f:
+        out_f.write(json.dumps({"_meta": run_meta}, ensure_ascii=False) + "\n")
+        out_f.flush()
+
+        for item in items[:limit]:
+            if not isinstance(item, dict):
+                out_f.write(json.dumps({"error": "invalid_item_type"}, ensure_ascii=False) + "\n")
+                out_f.flush()
+                continue
+            filename = item.get("doc_id")
+            query = item.get(args.query_field)
+            uuid = item.get("uuid")
+
+            if not filename or not query:
+                out_f.write(json.dumps({
+                    "uuid": uuid,
+                    "doc_id": filename,
+                    "query": query,
+                    "error": "missing_doc_id_or_query",
+                }, ensure_ascii=False) + "\n")
+                out_f.flush()
+                continue
+
+            pdf_path = _find_pdf(root_pdf, str(filename))
+            if not pdf_path:
+                out_f.write(json.dumps({
+                    "uuid": uuid,
+                    "doc_id": filename,
+                    "query": query,
+                    "error": "pdf_not_found",
+                }, ensure_ascii=False) + "\n")
+                out_f.flush()
+                continue
+
+            doc_id = compute_doc_id(str(pdf_path))
+            doc_hash = doc_id.split(":")[-1]
+            run_dir = runs_root / doc_hash
+            artifacts = _load_artifacts(run_dir)
+            if not artifacts:
+                out_f.write(json.dumps({
+                    "uuid": uuid,
+                    "doc_id": filename,
+                    "query": query,
+                    "pdf_path": str(pdf_path),
+                    "doc_hash": doc_hash,
+                    "error": "artifacts_not_found",
+                }, ensure_ascii=False) + "\n")
+                out_f.flush()
+                continue
+
+            try:
+                executor = _get_executor(
+                    cache,
+                    index_dir=Path(artifacts["index_dir"]),
+                    asset_base_dir=Path(artifacts["asset_base_dir"]),
+                    budget=budget,
+                    planner_cfg=planner_cfg,
+                    llm_cfg=llm_cfg,
+                )
+                result = executor.run(str(query))
+                out_f.write(json.dumps({
+                    "uuid": uuid,
+                    "doc_id": filename,
+                    "query": query,
+                    "pdf_path": str(pdf_path),
+                    "doc_hash": doc_hash,
+                    "artifacts": artifacts,
+                    "final": result.get("final"),
+                    "trace": result.get("trace", []),
+                }, ensure_ascii=False) + "\n")
+                out_f.flush()
+            except Exception as exc:
+                out_f.write(json.dumps({
+                    "uuid": uuid,
+                    "doc_id": filename,
+                    "query": query,
+                    "pdf_path": str(pdf_path),
+                    "doc_hash": doc_hash,
+                    "artifacts": artifacts,
+                    "error": str(exc),
+                }, ensure_ascii=False) + "\n")
+                out_f.flush()
+
+    print(f"Saved results to {out_path}")
 
 
 if __name__ == "__main__":
