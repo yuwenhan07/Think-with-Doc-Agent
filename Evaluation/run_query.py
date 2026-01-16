@@ -5,7 +5,7 @@ import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT / "1-pdf_parsing"))
@@ -19,6 +19,22 @@ from skills import LLMConfig  # type: ignore  # noqa: E402
 
 def _read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _iter_items(path: Path) -> Iterable[object]:
+    if path.suffix.lower() == ".jsonl":
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                yield json.loads(line)
+        return
+    data = _read_json(path)
+    if not isinstance(data, list):
+        raise ValueError("input_json must be a list of records when using .json.")
+    for item in data:
+        yield item
 
 
 def _ensure_parent(path: Path) -> None:
@@ -82,7 +98,9 @@ def main() -> None:
     parser.add_argument("--root_pdf", type=str, required=True)
     parser.add_argument("--runs_root", type=str, default=str(ROOT / "Evaluation" / "runs"))
     parser.add_argument("--query_field", type=str, default="question")
+    parser.add_argument("--doc_id", type=str, default="")
     parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--extract_output", type=str, default="")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--max_turns", type=int, default=20)
     parser.add_argument("--max_search_calls", type=int, default=3)
@@ -90,10 +108,7 @@ def main() -> None:
     parser.add_argument("--max_blocks_context", type=int, default=8)
     args = parser.parse_args()
 
-    items = _read_json(Path(args.input_json))
-    if not isinstance(items, list):
-        raise ValueError("input_json must be a list of records.")
-
+    input_path = Path(args.input_json)
     root_pdf = Path(args.root_pdf)
     runs_root = Path(args.runs_root)
     planner_cfg = PlannerConfig()
@@ -106,10 +121,11 @@ def main() -> None:
     )
 
     cache = _build_executor_cache()
-    limit = args.limit if args.limit and args.limit > 0 else len(items)
-
     out_path = Path(args.output)
     _ensure_parent(out_path)
+    extract_path = Path(args.extract_output) if args.extract_output else None
+    if extract_path:
+        _ensure_parent(extract_path)
 
     run_meta = {
         "input_json": str(Path(args.input_json)),
@@ -125,14 +141,37 @@ def main() -> None:
         out_f.write(json.dumps({"_meta": run_meta}, ensure_ascii=False) + "\n")
         out_f.flush()
 
-        for item in items[:limit]:
+        extract_f = None
+        if extract_path:
+            extract_f = extract_path.open("w", encoding="utf-8")
+
+        processed = 0
+        limit = args.limit if args.limit and args.limit > 0 else 0
+        for item in _iter_items(input_path):
+            if limit and processed >= limit:
+                break
+            processed += 1
             if not isinstance(item, dict):
-                out_f.write(json.dumps({"error": "invalid_item_type"}, ensure_ascii=False) + "\n")
-                out_f.flush()
-                continue
-            filename = item.get("doc_id")
-            query = item.get(args.query_field)
-            uuid = item.get("uuid")
+                if isinstance(item, str):
+                    filename = args.doc_id or None
+                    query = item
+                    uuid = None
+                    answer = None
+                    answer_format = None
+                else:
+                    out_f.write(json.dumps({"error": "invalid_item_type"}, ensure_ascii=False) + "\n")
+                    out_f.flush()
+                    continue
+            else:
+                filename = item.get("doc_id") or (args.doc_id or None)
+                query = item.get(args.query_field)
+                if not query and args.query_field != "query":
+                    query = item.get("query")
+                uuid = item.get("uuid")
+                answer = item.get("answer")
+                answer_format = item.get("answer_format")
+                if answer_format is None:
+                    answer_format = item.get("answer-formate")
 
             if not filename or not query:
                 out_f.write(json.dumps({
@@ -142,6 +181,16 @@ def main() -> None:
                     "error": "missing_doc_id_or_query",
                 }, ensure_ascii=False) + "\n")
                 out_f.flush()
+                if extract_f:
+                    extract_f.write(json.dumps({
+                        "uuid": uuid,
+                        "question": query,
+                        "answer": answer,
+                        "answer_format": answer_format,
+                        "final_text": None,
+                        "error": "missing_doc_id_or_query",
+                    }, ensure_ascii=False) + "\n")
+                    extract_f.flush()
                 continue
 
             pdf_path = _find_pdf(root_pdf, str(filename))
@@ -153,6 +202,16 @@ def main() -> None:
                     "error": "pdf_not_found",
                 }, ensure_ascii=False) + "\n")
                 out_f.flush()
+                if extract_f:
+                    extract_f.write(json.dumps({
+                        "uuid": uuid,
+                        "question": query,
+                        "answer": answer,
+                        "answer_format": answer_format,
+                        "final_text": None,
+                        "error": "pdf_not_found",
+                    }, ensure_ascii=False) + "\n")
+                    extract_f.flush()
                 continue
 
             doc_id = compute_doc_id(str(pdf_path))
@@ -169,6 +228,16 @@ def main() -> None:
                     "error": "artifacts_not_found",
                 }, ensure_ascii=False) + "\n")
                 out_f.flush()
+                if extract_f:
+                    extract_f.write(json.dumps({
+                        "uuid": uuid,
+                        "question": query,
+                        "answer": answer,
+                        "answer_format": answer_format,
+                        "final_text": None,
+                        "error": "artifacts_not_found",
+                    }, ensure_ascii=False) + "\n")
+                    extract_f.flush()
                 continue
 
             try:
@@ -181,6 +250,8 @@ def main() -> None:
                     llm_cfg=llm_cfg,
                 )
                 result = executor.run(str(query))
+                final = result.get("final") or {}
+                final_text = final.get("final_text") if isinstance(final, dict) else None
                 out_f.write(json.dumps({
                     "uuid": uuid,
                     "doc_id": filename,
@@ -192,6 +263,15 @@ def main() -> None:
                     "trace": result.get("trace", []),
                 }, ensure_ascii=False) + "\n")
                 out_f.flush()
+                if extract_f:
+                    extract_f.write(json.dumps({
+                        "uuid": uuid,
+                        "question": query,
+                        "answer": answer,
+                        "answer_format": answer_format,
+                        "final_text": final_text,
+                    }, ensure_ascii=False) + "\n")
+                    extract_f.flush()
             except Exception as exc:
                 out_f.write(json.dumps({
                     "uuid": uuid,
@@ -203,6 +283,19 @@ def main() -> None:
                     "error": str(exc),
                 }, ensure_ascii=False) + "\n")
                 out_f.flush()
+                if extract_f:
+                    extract_f.write(json.dumps({
+                        "uuid": uuid,
+                        "question": query,
+                        "answer": answer,
+                        "answer_format": answer_format,
+                        "final_text": None,
+                        "error": str(exc),
+                    }, ensure_ascii=False) + "\n")
+                    extract_f.flush()
+
+        if extract_f:
+            extract_f.close()
 
     print(f"Saved results to {out_path}")
 
