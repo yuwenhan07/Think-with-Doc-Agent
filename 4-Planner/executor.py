@@ -315,23 +315,30 @@ class Executor:
             if forced:
                 plan = forced
             else:
-                try:
-                    planner_input = {
-                        "query": state.query,
-                        "turn": state.turn,
-                        "budget": self._budget_snapshot(state),
-                        "history": self._summarize_history(state),
-                        "last_observation": self._summarize_observation(state),
-                    }
-                    plan, planner_trace = self.planner.plan_with_trace(planner_input)
-                    self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
-                except Exception as exc:
-                    state.trace.append({
-                        "tool": "planner_error",
-                        "args": {"turn": state.turn, "input": planner_input},
-                        "observation": {"error": str(exc)},
-                    })
-                    return {"final": {"final_text": f"Planner failed: {exc}", "citations": []}, "trace": state.trace}
+                planner_input = {
+                    "query": state.query,
+                    "turn": state.turn,
+                    "budget": self._budget_snapshot(state),
+                    "history": self._summarize_history(state),
+                    "last_observation": self._summarize_observation(state),
+                }
+                plan = None
+                max_retries = 2
+                for attempt in range(max_retries + 1):
+                    try:
+                        plan, planner_trace = self.planner.plan_with_trace(planner_input)
+                        self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
+                        if plan:
+                            break
+                    except Exception as exc:
+                        state.trace.append({
+                            "tool": "planner_error",
+                            "args": {"turn": state.turn, "input": planner_input, "attempt": attempt + 1},
+                            "observation": {"error": str(exc)},
+                        })
+                        plan = None
+                    if attempt == max_retries:
+                        return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
                 if not plan:
                     fallback = self._fallback_plan(state, {"final": {}})
                     if fallback:
@@ -352,7 +359,34 @@ class Executor:
             tool = plan.get("tool")
             args = plan.get("args", {})
             if tool is None:
-                return {"final": {"final_text": "Planner returned no tool.", "citations": []}, "trace": state.trace}
+                planner_input = {
+                    "query": state.query,
+                    "turn": state.turn,
+                    "budget": self._budget_snapshot(state),
+                    "history": self._summarize_history(state),
+                    "last_observation": self._summarize_observation(state),
+                }
+                plan = None
+                max_retries = 2
+                for attempt in range(max_retries + 1):
+                    try:
+                        plan, planner_trace = self.planner.plan_with_trace(planner_input)
+                        self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
+                        tool = plan.get("tool") if plan else None
+                        args = plan.get("args", {}) if plan else {}
+                        if tool:
+                            break
+                    except Exception as exc:
+                        state.trace.append({
+                            "tool": "planner_error",
+                            "args": {"turn": state.turn, "input": planner_input, "attempt": attempt + 1},
+                            "observation": {"error": str(exc)},
+                        })
+                        plan = None
+                    if attempt == max_retries:
+                        return {"final": {"final_text": "Planner returned no tool.", "citations": []}, "trace": state.trace}
+                if tool is None:
+                    return {"final": {"final_text": "Planner returned no tool.", "citations": []}, "trace": state.trace}
 
             budget_fail = self._apply_budget(state, tool, args)
             if budget_fail:
