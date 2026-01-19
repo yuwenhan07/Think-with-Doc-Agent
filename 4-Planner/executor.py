@@ -121,7 +121,7 @@ class Executor:
             return {
                 "tool": "build_context",
                 "evidence_count": len(evidence) if isinstance(evidence, list) else 0,
-                "pages": pages[:10],
+                "pages": pages[:5],
             }
         if state.last_tool == "judge_retrieval":
             return {
