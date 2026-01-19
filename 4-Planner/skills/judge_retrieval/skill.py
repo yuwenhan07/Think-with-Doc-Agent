@@ -10,7 +10,6 @@ from ..llm_utils import get_llm_client, safe_json
 def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict[str, Any]:
     query = args.get("query", "")
     search_result = args.get("search_result", {})
-    intent = args.get("intent", "theme")
 
     prompt = (
         "You are the judge_retrieval skill. Output JSON only.\n"
@@ -18,7 +17,6 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
         "Return: verdict (good|bad|uncertain), reasons, suggestions.\n"
         "suggestions is a list of {action, ...} for rewrite/search.\n"
         f"Query: {query}\n"
-        f"Intent: {intent}\n"
         "Search result (JSON):\n"
         f"{json.dumps(search_result, ensure_ascii=False)}\n"
     )

@@ -31,7 +31,6 @@ class ExecutionState:
     last_search_result: Optional[Dict[str, Any]] = None
     last_context: Optional[Dict[str, Any]] = None
     last_answer: Optional[Dict[str, Any]] = None
-    intent: str = "theme"
     history: List[Dict[str, Any]] = field(default_factory=list)
     trace: List[Dict[str, Any]] = field(default_factory=list)
     search_calls: int = 0
@@ -173,7 +172,7 @@ class Executor:
         if state.last_tool == "search":
             return {
                 "tool": "judge_retrieval",
-                "args": {"query": state.query, "search_result": state.last_search_result, "intent": state.intent},
+                "args": {"query": state.query, "search_result": state.last_search_result},
             }
         if state.last_tool == "answer":
             return {
@@ -217,8 +216,6 @@ class Executor:
         if tool == "build_context":
             if "search_result" not in args:
                 args["search_result"] = state.last_search_result or {}
-            if "intent" not in args:
-                args["intent"] = state.intent
             if "query" not in args:
                 args["query"] = state.query
         elif tool == "answer":
@@ -235,8 +232,6 @@ class Executor:
         elif tool == "judge_retrieval":
             if "search_result" not in args:
                 args["search_result"] = state.last_search_result or {}
-            if "intent" not in args:
-                args["intent"] = state.intent
             if "query" not in args:
                 args["query"] = state.query
         return args
@@ -329,7 +324,7 @@ class Executor:
                 if tool == "search" and state.last_search_result:
                     pruned = self._prune_search_result(state.last_search_result)
                     ctx_obs = get_skill("build_context")(
-                        {"search_result": pruned, "intent": state.intent, "max_blocks": self.budget.max_blocks_context, "query": state.query},
+                        {"search_result": pruned, "max_blocks": self.budget.max_blocks_context, "query": state.query},
                         self.ctx,
                         self.llm_config,
                     )
@@ -365,8 +360,6 @@ class Executor:
                     "trace": state.trace,
                 }
 
-            if tool == "rewrite":
-                state.intent = obs.get("intent", state.intent)
             if tool == "search":
                 state.last_search_result = obs
             if tool == "build_context":

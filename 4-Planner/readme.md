@@ -103,15 +103,15 @@ Planner 只能输出以下格式之一（LLM prompt 强制限制）：
 ## **Skills 一览（职责 + 输入输出）**
 
 ### **rewrite**
-目的：对 query 做意图识别 + 改写，输出更适合检索的 query 版本。
+目的：改写 query，输出更适合检索的 query 版本。
 
 输入：
 ```json
-{"query": "...", "mode": "theme", "max_rewrites": 3}
+{"query": "...", "max_rewrites": 3}
 ```
 输出：
 ```json
-{"intent": "paper_theme", "rewrites": ["..."], "negative": [], "page_prior": [], "notes": "..."}
+{"rewrites": ["..."], "negative": [], "page_prior": [], "notes": "..."}
 ```
 
 ### **search**
@@ -139,7 +139,7 @@ Planner 只能输出以下格式之一（LLM prompt 强制限制）：
 
 输入：
 ```json
-{"search_result": {...}, "intent": "paper_theme", "max_blocks": 8}
+{"search_result": {...}, "max_blocks": 8}
 ```
 输出：
 ```json

@@ -8,15 +8,12 @@ from ..llm_utils import get_llm_client, safe_json
 
 def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict[str, Any]:
     query = args.get("query", "")
-    mode = args.get("mode", "theme")
     max_rewrites = int(args.get("max_rewrites", 3))
 
     prompt = (
         "You are the rewrite skill. Output JSON only.\n"
-        "Required fields: intent, rewrites, negative, page_prior, notes.\n"
-        "intent examples: paper_theme, fact, locate, compare.\n"
+        "Required fields: rewrites, negative, page_prior, notes.\n"
         f"Query: {query}\n"
-        f"Mode: {mode}\n"
         f"Max rewrites: {max_rewrites}\n"
     )
 
