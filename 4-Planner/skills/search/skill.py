@@ -7,8 +7,6 @@ from ..context import ExecutionContext, LLMConfig
 
 
 _REF_RE = re.compile(r"\b(references|bibliography|reference)\b", re.IGNORECASE)
-_ABS_RE = re.compile(r"\babstract\b", re.IGNORECASE)
-
 
 def _apply_filters(
     summary_hits: List[Dict[str, Any]],
@@ -31,13 +29,10 @@ def _apply_filters(
 def _stats(summary_hits: List[Dict[str, Any]], block_hits: List[Dict[str, Any]]) -> Dict[str, Any]:
     texts = [(h.get("text") or "") for h in block_hits]
     if not texts:
-        return {"refs_ratio": 0.0, "has_abstract": False, "block_hits": 0}
+        return {"refs_ratio": 0.0, "block_hits": 0}
     ref_hits = sum(1 for t in texts if _REF_RE.search(t))
     refs_ratio = ref_hits / max(1, len(texts))
-    has_abstract = any(_ABS_RE.search(t or "") for t in texts) or any(
-        _ABS_RE.search(h.get("summary") or "") for h in summary_hits
-    )
-    return {"refs_ratio": refs_ratio, "has_abstract": has_abstract, "block_hits": len(texts)}
+    return {"refs_ratio": refs_ratio, "block_hits": len(texts)}
 
 
 def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict[str, Any]:

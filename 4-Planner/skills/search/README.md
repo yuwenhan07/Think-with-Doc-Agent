@@ -22,6 +22,6 @@ Output
   "candidate_pages": [2, 6, 1],
   "summary_hits": [...],
   "block_hits": [...],
-  "stats": {"refs_ratio": 0.2, "has_abstract": true, "block_hits": 30}
+  "stats": {"refs_ratio": 0.2, "block_hits": 30}
 }
 ```

@@ -103,7 +103,6 @@ class Executor:
                 "tool": "search",
                 "stats": {
                     "block_hits": stats.get("block_hits"),
-                    "has_abstract": stats.get("has_abstract"),
                 },
                 "candidate_pages": obs.get("candidate_pages") if isinstance(obs, dict) else None,
             }
