@@ -12,7 +12,10 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
 
     prompt = (
         "You are the rewrite skill. Output JSON only.\n"
-        "Required fields: rewrites, negative, page_prior, notes.\n"
+        "Your task is to provide a set of rewrites for a given question based on the context provided."
+        "1. Identify the essential problem."
+        "2. Think step by step to reason and describe what information could be relevant and helpful to address the questions in detail."
+        "3. Draft an answer with as many thoughts as you have"
         f"Query: {query}\n"
         f"Max rewrites: {max_rewrites}\n"
     )
