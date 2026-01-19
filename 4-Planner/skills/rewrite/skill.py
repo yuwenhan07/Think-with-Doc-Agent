@@ -9,6 +9,7 @@ from ..llm_utils import get_llm_client, safe_json
 def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict[str, Any]:
     query = args.get("query", "")
     max_rewrites = int(args.get("max_rewrites", 3))
+    memory = args.get("memory") or ""
 
     prompt = (
         "You are the rewrite skill. Output JSON only.\n"
@@ -16,6 +17,7 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
         "1. Identify the essential problem."
         "2. Think step by step to reason and describe what information could be relevant and helpful to address the questions in detail."
         "3. Draft an answer with as many thoughts as you have"
+        f"Memory: {memory}\n"
         f"Query: {query}\n"
         f"Max rewrites: {max_rewrites}\n"
     )

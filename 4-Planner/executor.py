@@ -11,6 +11,7 @@ import faiss
 
 from planners import LLMPlanner, PlannerConfig
 from skills import ExecutionContext, LLMConfig, get_skill
+from memory import MemoryStore
 
 
 @dataclass
@@ -37,6 +38,7 @@ class ExecutionState:
     rewrite_calls: int = 0
     answer_calls: int = 0
     search_query_counts: Dict[str, int] = field(default_factory=dict)
+    memory_prompt: str = ""
 
 
 def _load_search_module(root: Path):
@@ -223,6 +225,11 @@ class Executor:
                 args.pop("answer", None)
             if "context" not in args:
                 args["context"] = state.last_context or {}
+            if state.memory_prompt and "memory" not in args:
+                args["memory"] = state.memory_prompt
+        elif tool == "rewrite":
+            if state.memory_prompt and "memory" not in args:
+                args["memory"] = state.memory_prompt
         elif tool == "judge_answer":
             if "context" not in args:
                 args["context"] = state.last_context or {}
@@ -305,8 +312,10 @@ class Executor:
         pruned["candidate_pages"] = candidate_pages
         return pruned
 
-    def run(self, query: str) -> Dict[str, Any]:
+    def run(self, query: str, *, memory: Optional[MemoryStore] = None) -> Dict[str, Any]:
         state = ExecutionState(query=query)
+        if memory is not None:
+            state.memory_prompt = memory.to_prompt()
 
         while state.turn < self.budget.max_turns:
             state.turn += 1
@@ -320,6 +329,7 @@ class Executor:
                     "budget": self._budget_snapshot(state),
                     "history": self._summarize_history(state),
                     "last_observation": self._summarize_observation(state),
+                    "memory": state.memory_prompt,
                 }
                 plan = None
                 max_retries = 2
@@ -364,6 +374,7 @@ class Executor:
                     "budget": self._budget_snapshot(state),
                     "history": self._summarize_history(state),
                     "last_observation": self._summarize_observation(state),
+                    "memory": state.memory_prompt,
                 }
                 plan = None
                 max_retries = 2

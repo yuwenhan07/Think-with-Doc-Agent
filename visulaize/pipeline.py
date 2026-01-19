@@ -22,6 +22,7 @@ from summary import summarize_doc_json  # type: ignore  # noqa: E402
 from chunk_output import demo_build_blocks_for_doc_json  # type: ignore  # noqa: E402
 from embedding import build_indexes  # type: ignore  # noqa: E402
 from executor import BudgetConfig, Executor  # type: ignore  # noqa: E402
+from memory import MemoryStore  # type: ignore  # noqa: E402
 from planners import PlannerConfig  # type: ignore  # noqa: E402
 from skills import LLMConfig  # type: ignore  # noqa: E402
 
@@ -192,6 +193,7 @@ def run_query(
     query: str,
     artifacts: PipelineArtifacts,
     *,
+    memory: Optional[list[dict]] = None,
     logger: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, object]:
     log = logger or _default_logger
@@ -209,6 +211,7 @@ def run_query(
         llm_config=llm_cfg,
         budget=budget,
     )
-    result = executor.run(query)
+    memory_store = MemoryStore.from_list(memory)
+    result = executor.run(query, memory=memory_store)
     log("Planner/executor finished.")
     return result

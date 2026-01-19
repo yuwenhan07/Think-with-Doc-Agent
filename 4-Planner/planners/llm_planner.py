@@ -103,6 +103,7 @@ class LLMPlanner:
             f"Budget: {state.get('budget', {})}\n"
             f"History: {state.get('history', [])}\n"
             f"Last observation: {state.get('last_observation', {})}\n"
+            f"Memory: {state.get('memory', '')}\n"
         )
 
     def plan(self, state: Dict[str, Any]) -> Dict[str, Any]:

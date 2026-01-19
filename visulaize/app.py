@@ -116,9 +116,21 @@ def _append_jsonl(path: Path, payload: Dict[str, object]) -> None:
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-def process_pdf(pdf_file) -> Tuple[str, Optional[Dict[str, str]]]:
+def _memory_to_chat(memory: List[Dict[str, object]]) -> List[Tuple[str, str]]:
+    rows: List[Tuple[str, str]] = []
+    for item in memory:
+        if not isinstance(item, dict):
+            continue
+        user = str(item.get("user") or "")
+        assistant = str(item.get("assistant") or "")
+        if user or assistant:
+            rows.append((user, assistant))
+    return rows
+
+
+def process_pdf(pdf_file) -> Tuple[str, Optional[Dict[str, str]], List[Dict[str, object]], List[Tuple[str, str]]]:
     if pdf_file is None:
-        return "Please upload a PDF file.", None
+        return "Please upload a PDF file.", None, [], []
 
     logs: List[str] = []
 
@@ -129,7 +141,7 @@ def process_pdf(pdf_file) -> Tuple[str, Optional[Dict[str, str]]]:
         artifacts = build_pipeline(pdf_file.name, logger=log)
     except Exception as exc:  # noqa: BLE001
         logs.append(f"Pipeline failed: {exc}")
-        return _join_logs(logs), None
+        return _join_logs(logs), None, [], []
 
     logs.append(
         f"Ready. doc_id={artifacts.doc_id}, pages={artifacts.num_pages}, run_dir={artifacts.run_dir}"
@@ -145,17 +157,29 @@ def process_pdf(pdf_file) -> Tuple[str, Optional[Dict[str, str]]]:
             "num_pages": artifacts.num_pages,
         },
     )
-    return _join_logs(logs), artifacts.to_dict()
+    return _join_logs(logs), artifacts.to_dict(), [], []
 
 
 def ask_query(
     query: str,
     artifacts_state: Optional[Dict[str, str]],
-) -> Tuple[str, str, Dict[str, object], List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]], List[Tuple[str, str]], str]:
+    memory_state: List[Dict[str, object]],
+) -> Tuple[
+    str,
+    str,
+    Dict[str, object],
+    List[Dict[str, object]],
+    List[Dict[str, object]],
+    List[Dict[str, object]],
+    List[Tuple[str, str]],
+    str,
+    List[Dict[str, object]],
+    List[Tuple[str, str]],
+]:
     if not artifacts_state:
-        return "Please process a PDF first.", "", {}, [], [], [], [], "No retrieval results."
+        return "Please process a PDF first.", "", {}, [], [], [], [], "No retrieval results.", memory_state, _memory_to_chat(memory_state)
     if not query or not query.strip():
-        return "Please enter a query.", "", {}, [], [], [], [], "No retrieval results."
+        return "Please enter a query.", "", {}, [], [], [], [], "No retrieval results.", memory_state, _memory_to_chat(memory_state)
 
     logs: List[str] = []
 
@@ -164,10 +188,10 @@ def ask_query(
 
     artifacts = PipelineArtifacts.from_dict(artifacts_state)
     try:
-        result = run_query(query.strip(), artifacts, logger=log)
+        result = run_query(query.strip(), artifacts, memory=memory_state, logger=log)
     except Exception as exc:  # noqa: BLE001
         logs.append(f"Query failed: {exc}")
-        return _join_logs(logs), "", {}, [], [], [], [], "No retrieval results."
+        return _join_logs(logs), "", {}, [], [], [], [], "No retrieval results.", memory_state, _memory_to_chat(memory_state)
 
     final = result.get("final", {}) if isinstance(result, dict) else {}
     trace = result.get("trace", []) if isinstance(result, dict) else []
@@ -176,6 +200,9 @@ def ask_query(
         final_text = str(final.get("final_text") or "")
     planner_io, executor_io = _extract_planner_executor_io(trace if isinstance(trace, list) else [])
     retrieval_images, retrieval_text = _extract_retrieval(trace if isinstance(trace, list) else [])
+    memory_state = list(memory_state)
+    memory_state.append({"user": query.strip(), "assistant": final_text, "final": final})
+    chat_history = _memory_to_chat(memory_state)
     _append_jsonl(
         Path(artifacts.run_dir) / "session" / "events.jsonl",
         {
@@ -184,9 +211,21 @@ def ask_query(
             "query": query.strip(),
             "final": final,
             "trace": trace,
+            "memory": memory_state,
         },
     )
-    return _join_logs(logs), final_text, final, trace, planner_io, executor_io, retrieval_images, retrieval_text
+    return (
+        _join_logs(logs),
+        final_text,
+        final,
+        trace,
+        planner_io,
+        executor_io,
+        retrieval_images,
+        retrieval_text,
+        memory_state,
+        chat_history,
+    )
 
 
 def build_ui() -> gr.Blocks:
@@ -203,6 +242,7 @@ def build_ui() -> gr.Blocks:
 
         status = gr.Textbox(label="Status / Logs", lines=10, interactive=False)
         artifacts_state = gr.State()
+        memory_state = gr.State([])
 
         gr.Markdown("## Ask a question")
         query = gr.Textbox(label="Query", placeholder="Ask about the document...")
@@ -210,6 +250,7 @@ def build_ui() -> gr.Blocks:
 
         with gr.Row():
             with gr.Column(scale=3):
+                chatbot = gr.Chatbot(label="Conversation")
                 answer = gr.Markdown()
                 final_json = gr.JSON(label="Final Result")
                 trace_json = gr.JSON(label="Planner/Executor Trace")
@@ -229,12 +270,12 @@ def build_ui() -> gr.Blocks:
         process_btn.click(
             process_pdf,
             inputs=[pdf_file],
-            outputs=[status, artifacts_state],
+            outputs=[status, artifacts_state, memory_state, chatbot],
         )
 
         ask_btn.click(
             ask_query,
-            inputs=[query, artifacts_state],
+            inputs=[query, artifacts_state, memory_state],
             outputs=[
                 status,
                 answer,
@@ -244,6 +285,8 @@ def build_ui() -> gr.Blocks:
                 executor_io,
                 retrieval_images,
                 retrieval_text,
+                memory_state,
+                chatbot,
             ],
         )
 

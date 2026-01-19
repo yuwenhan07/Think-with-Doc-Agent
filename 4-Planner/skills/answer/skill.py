@@ -38,6 +38,7 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
         context = {}
     need_citations = bool(args.get("need_citations", True))
     style = args.get("style", "short")
+    memory = args.get("memory") or ""
 
     evidence = context.get("evidence", []) if isinstance(context.get("evidence", []), list) else []
     if not evidence:
@@ -54,6 +55,7 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
         f"Need citations: {need_citations}\n"
         f"Style: {style}\n"
         f"Question: {context.get('question', '')}\n"
+        f"Memory: {memory}\n"
         "Evidence:\n"
         f"{json.dumps(evidence, ensure_ascii=False)}\n"
     )
