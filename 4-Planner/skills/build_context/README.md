@@ -8,7 +8,6 @@ Input
 ```json
 {
   "search_result": {"query": "summarize this paper", "block_hits": [...]},
-  "intent": "paper_theme",
   "max_blocks": 8,
   "max_chars_per_block": 1200
 }

@@ -8,7 +8,6 @@ Input
 ```json
 {
   "query": "summarize this paper",
-  "intent": "paper_theme",
   "search_result": {"summary_hits": [], "block_hits": [], "stats": {"refs_ratio": 0.6}}
 }
 ```
@@ -19,7 +18,7 @@ Output
   "verdict": "bad",
   "reasons": ["references_heavy", "missing_abstract"],
   "suggestions": [
-    {"action": "rewrite", "mode": "theme"},
+    {"action": "rewrite"},
     {"action": "search", "filters": {"force_pages": [1, 2, 3]}}
   ]
 }
