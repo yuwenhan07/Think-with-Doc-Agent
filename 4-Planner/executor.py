@@ -250,6 +250,41 @@ class Executor:
             return finalize({"answer": ans}, self.ctx, self.llm_config)
         return self._final_not_answerable()
 
+    def _finalize_with_judge(self, state: ExecutionState) -> Optional[Dict[str, Any]]:
+        if not state.last_context and state.last_search_result:
+            pruned = self._prune_search_result(state.last_search_result)
+            ctx_obs = get_skill("build_context")(
+                {"search_result": pruned, "max_blocks": self.budget.max_blocks_context, "query": state.query},
+                self.ctx,
+                self.llm_config,
+            )
+            state.last_context = ctx_obs.get("context")
+            self._record(state, "build_context", {"max_blocks": self.budget.max_blocks_context}, ctx_obs)
+
+        if not state.last_context:
+            return None
+
+        if not state.last_answer:
+            ans_obs = get_skill("answer")(
+                {"context": state.last_context, "need_citations": True, "style": "short"},
+                self.ctx,
+                self.llm_config,
+            )
+            state.last_answer = ans_obs
+            self._record(state, "answer", {"style": "short"}, ans_obs)
+
+        judge_obs = get_skill("judge_answer")(
+            {"query": state.query, "context": state.last_context, "answer": state.last_answer},
+            self.ctx,
+            self.llm_config,
+        )
+        self._record(state, "judge_answer", {}, judge_obs)
+        if judge_obs.get("verdict") == "final":
+            final_obs = get_skill("finalize")({"answer": state.last_answer}, self.ctx, self.llm_config)
+            self._record(state, "finalize", {}, final_obs)
+            return final_obs
+        return None
+
     def _prune_search_result(self, search_result: Dict[str, Any]) -> Dict[str, Any]:
         if not search_result:
             return {}
@@ -321,29 +356,10 @@ class Executor:
 
             budget_fail = self._apply_budget(state, tool, args)
             if budget_fail:
-                if tool == "search" and state.last_search_result:
-                    pruned = self._prune_search_result(state.last_search_result)
-                    ctx_obs = get_skill("build_context")(
-                        {"search_result": pruned, "max_blocks": self.budget.max_blocks_context, "query": state.query},
-                        self.ctx,
-                        self.llm_config,
-                    )
-                    state.last_context = ctx_obs.get("context")
-                    self._record(state, "build_context", {"max_blocks": self.budget.max_blocks_context}, ctx_obs)
-
-                    ans_obs = get_skill("answer")(
-                        {"context": state.last_context, "need_citations": True, "style": "short"},
-                        self.ctx,
-                        self.llm_config,
-                    )
-                    state.last_answer = ans_obs
-                    self._record(state, "answer", {"style": "short"}, ans_obs)
-
-                    final_obs = get_skill("finalize")({"answer": state.last_answer}, self.ctx, self.llm_config)
-                    self._record(state, "finalize", {}, final_obs)
+                final_obs = self._finalize_with_judge(state)
+                if final_obs:
                     return {"final": final_obs, "trace": state.trace}
-
-                return {"final": budget_fail, "trace": state.trace}
+                return {"final": self._final_not_answerable(), "trace": state.trace}
 
             args = self._normalize_args(state, tool, args)
             if tool == "build_context" and not args.get("search_result"):
