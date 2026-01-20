@@ -37,8 +37,6 @@ class ExecutionState:
     last_search_result: Optional[Dict[str, Any]] = None 
     last_context: Optional[Dict[str, Any]] = None
     last_answer: Optional[Dict[str, Any]] = None
-    # TODO：是否需要保留intent？是否在后续会有所更新
-    intent: str = "theme" # * intent 当前intent 描述用户意图  
     history: List[Dict[str, Any]] = field(default_factory=list) # * history 历史记录
     trace: List[Dict[str, Any]] = field(default_factory=list)  # * trace 执行过程
     search_calls: int = 0
@@ -193,7 +191,7 @@ class Executor:
         if state.last_tool == "search":
             return {
                 "tool": "judge_retrieval",
-                "args": {"query": state.query, "search_result": state.last_search_result, "intent": state.intent},
+                "args": {"query": state.query, "search_result": state.last_search_result},
             }
         if state.last_tool == "answer":
             return {
@@ -240,8 +238,6 @@ class Executor:
         if tool == "build_context":
             if "search_result" not in args:
                 args["search_result"] = state.last_search_result or {}
-            if "intent" not in args:
-                args["intent"] = state.intent
             if "query" not in args:
                 args["query"] = state.query
         elif tool == "answer":
@@ -258,8 +254,6 @@ class Executor:
         elif tool == "judge_retrieval":
             if "search_result" not in args:
                 args["search_result"] = state.last_search_result or {}
-            if "intent" not in args:
-                args["intent"] = state.intent
             if "query" not in args:
                 args["query"] = state.query
         return args
@@ -278,6 +272,42 @@ class Executor:
             finalize = get_skill("finalize")
             return finalize({"answer": ans}, self.ctx, self.llm_config)
         return self._final_not_answerable()
+
+    def _finalize_with_judge(self, state: ExecutionState) -> Optional[Dict[str, Any]]:
+        """预算耗尽时尽量产出结果：补齐 context -> answer -> judge -> finalize。"""
+        if not state.last_context and state.last_search_result:
+            pruned = self._prune_search_result(state.last_search_result)
+            ctx_obs = get_skill("build_context")(
+                {"search_result": pruned, "max_blocks": self.budget.max_blocks_context, "query": state.query},
+                self.ctx,
+                self.llm_config,
+            )
+            state.last_context = ctx_obs.get("context")
+            self._record(state, "build_context", {"max_blocks": self.budget.max_blocks_context}, ctx_obs)
+
+        if not state.last_context:
+            return None
+
+        if not state.last_answer:
+            ans_obs = get_skill("answer")(
+                {"context": state.last_context, "need_citations": True, "style": "short"},
+                self.ctx,
+                self.llm_config,
+            )
+            state.last_answer = ans_obs
+            self._record(state, "answer", {"style": "short"}, ans_obs)
+
+        judge_obs = get_skill("judge_answer")(
+            {"query": state.query, "context": state.last_context, "answer": state.last_answer},
+            self.ctx,
+            self.llm_config,
+        )
+        self._record(state, "judge_answer", {}, judge_obs)
+        if judge_obs.get("verdict") == "final":
+            final_obs = get_skill("finalize")({"answer": state.last_answer}, self.ctx, self.llm_config)
+            self._record(state, "finalize", {}, final_obs)
+            return final_obs
+        return None
 
     def _prune_search_result(self, search_result: Dict[str, Any]) -> Dict[str, Any]:
         """搜索命中过多时剪枝，保留 top block、top summary，并生成候选页。"""
@@ -311,25 +341,33 @@ class Executor:
             if forced:
                 plan = forced
             else:
-                try:
-                    # * 构造planner的输入
-                    planner_input = {
-                        "query": state.query,
-                        "turn": state.turn,
-                        "budget": self._budget_snapshot(state),
-                        "history": self._summarize_history(state),
-                        "last_observation": self._summarize_observation(state),
-                    }
-                    plan, planner_trace = self.planner.plan_with_trace(planner_input)  # * 调用planner，返回plan和trace
-                    self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
-                # * 异常处理
-                except Exception as exc:
-                    state.trace.append({
-                        "tool": "planner_error",
-                        "args": {"turn": state.turn, "input": planner_input},
-                        "observation": {"error": str(exc)},
-                    })
-                    return {"final": {"final_text": f"Planner failed: {exc}", "citations": []}, "trace": state.trace}
+                # * 构造planner的输入
+                planner_input = {
+                    "query": state.query,
+                    "turn": state.turn,
+                    "budget": self._budget_snapshot(state),
+                    "history": self._summarize_history(state),
+                    "last_observation": self._summarize_observation(state),
+                }
+                # * planner重试：解析失败/异常时重试两次（plan为空/JSON解析失败）
+                plan = None
+                max_retries = 2
+                for attempt in range(max_retries + 1):
+                    try:
+                        plan, planner_trace = self.planner.plan_with_trace(planner_input)  # * 调用planner，返回plan和trace
+                        self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
+                        if plan:
+                            break
+                    # * 异常处理
+                    except Exception as exc:
+                        state.trace.append({
+                            "tool": "planner_error",
+                            "args": {"turn": state.turn, "input": planner_input, "attempt": attempt + 1},
+                            "observation": {"error": str(exc)},
+                        })
+                        plan = None
+                    if attempt == max_retries:
+                        return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
                 if not plan:  # * 如果plan为空，则尝试使用fallback plan，错误兜底逻辑
                     fallback = self._fallback_plan(state, {"final": {}})
                     if fallback:
@@ -352,35 +390,45 @@ class Executor:
             args = plan.get("args", {})
             if tool is None:
                 # TODO：这里应该有更复杂的处理逻辑，比如回退以及一些其他异常的处理，而不是直接返回final_text
-                return {"final": {"final_text": "Planner returned no tool.", "citations": []}, "trace": state.trace}
+                # * 让planner重试，补一次 tool 输出（JSON已解析，但缺少tool字段）
+                planner_input = {
+                    "query": state.query,
+                    "turn": state.turn,
+                    "budget": self._budget_snapshot(state),
+                    "history": self._summarize_history(state),
+                    "last_observation": self._summarize_observation(state),
+                }
+                plan = None
+                max_retries = 2
+                for attempt in range(max_retries + 1):
+                    try:
+                        plan, planner_trace = self.planner.plan_with_trace(planner_input)  # * 调用planner，返回plan和trace
+                        self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
+                        tool = plan.get("tool") if plan else None
+                        args = plan.get("args", {}) if plan else {}
+                        if tool:
+                            break
+                    # * 异常处理
+                    except Exception as exc:
+                        state.trace.append({
+                            "tool": "planner_error",
+                            "args": {"turn": state.turn, "input": planner_input, "attempt": attempt + 1},
+                            "observation": {"error": str(exc)},
+                        })
+                        plan = None
+                    if attempt == max_retries:
+                        return {"final": {"final_text": "Planner returned no tool.", "citations": []}, "trace": state.trace}
+                if tool is None:
+                    return {"final": {"final_text": "Planner returned no tool.", "citations": []}, "trace": state.trace}
 
             # * 应用预算控制，返回是否超出预算的最终结果
             budget_fail = self._apply_budget(state, tool, args)
             if budget_fail:
-                if tool == "search" and state.last_search_result:  # * 如果是search超出预算，则尝试用已有的搜索结果继续回答
-                    pruned = self._prune_search_result(state.last_search_result)
-                    ctx_obs = get_skill("build_context")(
-                        {"search_result": pruned, "intent": state.intent, "max_blocks": self.budget.max_blocks_context, "query": state.query},
-                        self.ctx,
-                        self.llm_config,
-                    )
-                    state.last_context = ctx_obs.get("context")
-                    self._record(state, "build_context", {"max_blocks": self.budget.max_blocks_context}, ctx_obs)
-
-                    ans_obs = get_skill("answer")(
-                        {"context": state.last_context, "need_citations": True, "style": "short"},
-                        self.ctx,
-                        self.llm_config,
-                    )
-                    state.last_answer = ans_obs
-                    self._record(state, "answer", {"style": "short"}, ans_obs)
-
-                    final_obs = get_skill("finalize")({"answer": state.last_answer}, self.ctx, self.llm_config)
-                    self._record(state, "finalize", {}, final_obs)
+                # * 预算耗尽时尝试从已有状态输出
+                final_obs = self._finalize_with_judge(state)
+                if final_obs:
                     return {"final": final_obs, "trace": state.trace}
-
-                # * 如果不是search超出预算，则直接返回预算超出预算的最终结果
-                return {"final": budget_fail, "trace": state.trace}
+                return {"final": self._final_not_answerable(), "trace": state.trace}
 
             args = self._normalize_args(state, tool, args)
             if tool == "build_context" and not args.get("search_result"):
@@ -389,17 +437,28 @@ class Executor:
                 return {"final": self._final_not_answerable(), "trace": state.trace}
 
             # * 调用对应的skill执行具体的工具逻辑
+            # * 如果失败，给两次重试机会
             skill = get_skill(tool)
-            try:
-                obs = skill(args, self.ctx, self.llm_config)
-            except Exception as exc:
+            max_retries = 2
+            obs = None
+            last_exc: Optional[Exception] = None
+            for attempt in range(max_retries + 1):
+                try:
+                    obs = skill(args, self.ctx, self.llm_config)
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    state.trace.append({
+                        "tool": "skill_error",
+                        "args": {"tool": tool, "attempt": attempt + 1, "args": args},
+                        "observation": {"error": str(exc)},
+                    })
+            if obs is None:
                 return {
-                    "final": {"final_text": f"Skill failed: {tool}: {exc}", "citations": []},
+                    "final": {"final_text": f"Skill failed: {tool}: {last_exc}", "citations": []},
                     "trace": state.trace,
                 }
 
-            if tool == "rewrite":
-                state.intent = obs.get("intent", state.intent)  # * 如果rewrite返回了意图，则更新state中的intent
             if tool == "search":
                 state.last_search_result = obs
             if tool == "build_context":

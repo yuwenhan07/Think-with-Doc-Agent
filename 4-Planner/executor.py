@@ -412,11 +412,23 @@ class Executor:
                 return {"final": self._final_not_answerable(), "trace": state.trace}
 
             skill = get_skill(tool)
-            try:
-                obs = skill(args, self.ctx, self.llm_config)
-            except Exception as exc:
+            max_retries = 2
+            obs = None
+            last_exc: Optional[Exception] = None
+            for attempt in range(max_retries + 1):
+                try:
+                    obs = skill(args, self.ctx, self.llm_config)
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    state.trace.append({
+                        "tool": "skill_error",
+                        "args": {"tool": tool, "attempt": attempt + 1, "args": args},
+                        "observation": {"error": str(exc)},
+                    })
+            if obs is None:
                 return {
-                    "final": {"final_text": f"Skill failed: {tool}: {exc}", "citations": []},
+                    "final": {"final_text": f"Skill failed: {tool}: {last_exc}", "citations": []},
                     "trace": state.trace,
                 }
 
