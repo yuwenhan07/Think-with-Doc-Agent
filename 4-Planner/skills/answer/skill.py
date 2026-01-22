@@ -67,6 +67,9 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
         messages=messages,
         temperature=llm.temperature,
         max_tokens=llm.max_tokens,
+        response_format={
+            'type': 'json_object'
+        },
     )
 
     content = completion.choices[0].message.content or ""
