@@ -5,7 +5,8 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+import re
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import requests
 from openai import OpenAI
@@ -15,6 +16,107 @@ from prompt import (
     build_page_summary_prompt,
     strip_long_tabular_blocks,
 )
+
+SECTION_TYPES = {"abstract", "introduction", "methodology", "results", "conclusion", "other"}  # TODO 现在这种Types只对科研论文有效
+DEFAULT_SECTION_RELEVANCE = {
+    "abstract": 1.3,
+    "introduction": 1.15,
+    "methodology": 1.1,
+    "results": 1.1,
+    "conclusion": 1.2,
+    "other": 1.0,
+}
+
+_HEADING_RE = re.compile(r"^#{1,6}\s+(.*)$")
+_NUMBERED_RE = re.compile(r"^\s*\d+(\.\d+)*\s+(.*)$")
+
+
+def _safe_json(text: str) -> Optional[Dict[str, Any]]:
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+
+
+def _coerce_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_section_type(val: Any) -> str:
+    if not val:
+        return "other"
+    text = str(val).strip().lower()
+    if text in SECTION_TYPES:
+        return text
+    if "abstract" in text:
+        return "abstract"
+    if "intro" in text:
+        return "introduction"
+    if "method" in text or "approach" in text or "model" in text or "algorithm" in text:
+        return "methodology"
+    if "result" in text or "experiment" in text or "evaluation" in text or "analysis" in text:
+        return "results"
+    if "conclu" in text or "discussion" in text or "future work" in text:
+        return "conclusion"
+    return "other"
+
+
+def _infer_section_meta_from_text(text_raw: str) -> Tuple[str, str, float]:
+    lines = [l.strip() for l in (text_raw or "").splitlines() if l.strip()]
+    head_lines = lines[:6]
+    heading = ""
+    for line in head_lines:
+        m = _HEADING_RE.match(line)
+        if m:
+            heading = m.group(1).strip()
+            break
+        m = _NUMBERED_RE.match(line)
+        if m:
+            heading = m.group(2).strip()
+            break
+
+    blob = " ".join(head_lines).lower()
+    section_type = _normalize_section_type(blob)
+    section_relevance = DEFAULT_SECTION_RELEVANCE.get(section_type, 1.0)
+    page_section = heading or "unknown"
+    return section_type, page_section, section_relevance
+
+
+def _parse_structured_summary_output(text: str) -> Optional[Dict[str, Any]]:
+    data = _safe_json(text)
+    if not data:
+        return None
+
+    summary_val = data.get("summary")
+    summary_text = ""
+    if isinstance(summary_val, list):
+        bullets = [str(s).strip() for s in summary_val if str(s).strip()]
+        if bullets:
+            summary_text = "\n".join(f"- {s}" for s in bullets)
+    elif isinstance(summary_val, str):
+        summary_text = summary_val.strip()
+
+    section_type = _normalize_section_type(data.get("section_type"))
+    page_section = str(data.get("page_section") or "").strip()
+    section_relevance = _coerce_float(data.get("section_relevance"))
+
+    return {
+        "summary": summary_text,
+        "section_type": section_type,
+        "page_section": page_section,
+        "section_relevance": section_relevance,
+    }
 
 
 def _encode_image_base64(image_path: str) -> str:
@@ -67,6 +169,9 @@ class QianfanVLMClient:
         completion = self.client.chat.completions.create(
             model=self.model_id,
             messages=messages,
+            response_format={
+                "type": "json_object"
+            },
         )
         return completion.choices[0].message.content.strip()
 
@@ -81,7 +186,8 @@ def summarize_page_text(
     keep_tabular_head_lines: int = 0,
     max_chars: int = 10240,
     temperature: float = 0.2,
-) -> str:
+    return_meta: bool = False,
+) -> Union[str, Dict[str, Any]]:
     """Summarize a single page OCR markdown text.
 
     Args:
@@ -95,7 +201,7 @@ def summarize_page_text(
         temperature: Sampling temperature.
 
     Returns:
-        A concise summary string.
+        A concise summary string, or a dict with summary + section metadata when return_meta is True.
     """
     if text_raw is None:
         text_raw = ""
@@ -114,10 +220,34 @@ def summarize_page_text(
     )
     # print(f"[DEBUG] Prompt:\n{user_prompt}")
     vlm_client = QianfanVLMClient()
-    return vlm_client.chat_with_image(
+    output = vlm_client.chat_with_image(
         image_path=page_image_path,
         prompt=user_prompt,
     )
+    parsed = _parse_structured_summary_output(output)
+    if parsed and parsed.get("summary"):
+        summary_text = parsed["summary"]
+        section_type = parsed.get("section_type") or "other"
+        page_section = parsed.get("page_section") or "unknown"
+        section_relevance = parsed.get("section_relevance")
+    else:
+        summary_text = output.strip()
+        section_type, page_section, section_relevance = _infer_section_meta_from_text(cleaned)
+
+    if section_relevance is None:
+        section_relevance = DEFAULT_SECTION_RELEVANCE.get(section_type, 1.0)
+
+    if not page_section:
+        _, page_section, _ = _infer_section_meta_from_text(cleaned)
+
+    if return_meta:
+        return {
+            "summary": summary_text,
+            "section_type": section_type,
+            "page_section": page_section,
+            "section_relevance": float(section_relevance),
+        }
+    return summary_text
 
 
 def add_page_summaries_inplace(
@@ -134,12 +264,17 @@ def add_page_summaries_inplace(
     for p in pages:
         page_number = p.get("page_number")
         text_raw = p.get(text_key, "")
-        p[summary_key] = summarize_page_text(
+        result = summarize_page_text(
             text_raw,
             page_image_path=p.get("image_path"),
             page_number=page_number,
             prompt_config=prompt_config,
+            return_meta=True,
         )
+        p[summary_key] = result.get("summary")
+        p["section_type"] = result.get("section_type")
+        p["page_section"] = result.get("page_section")
+        p["section_relevance"] = result.get("section_relevance")
         if sleep_s > 0:
             time.sleep(sleep_s)
 
@@ -188,12 +323,17 @@ def summarize_pages_jsonl(input_jsonl_path: str, output_jsonl_path: str) -> None
     for page in items:
         page_number = page.get("page_number")
         text_raw = page.get("text_raw", "")
-        page["page_summary"] = summarize_page_text(
+        result = summarize_page_text(
             text_raw,
             page_image_path=page.get("image_path"),
             page_number=page_number,
             prompt_config=SummaryPromptConfig(language="en"),
+            return_meta=True,
         )
+        page["page_summary"] = result.get("summary")
+        page["section_type"] = result.get("section_type")
+        page["page_section"] = result.get("page_section")
+        page["section_relevance"] = result.get("section_relevance")
         out.append(page)
 
     write_jsonl(output_jsonl_path, out)

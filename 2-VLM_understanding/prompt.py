@@ -75,20 +75,30 @@ def build_page_summary_prompt(
 ) -> str:
     """Build a page-level summarization prompt.
 
-    The model should produce a concise, citation-friendly summary of one page.
+    The model should produce a concise, citation-friendly summary of one page,
+    plus lightweight section metadata.
     """
     header = f"Page {page_number}" if page_number is not None else "This page"
 
     if config.language.lower() == "en":
         return (
             f"You are summarizing a single page of an academic PDF.\n"
-            f"Summarize {header} using at most {config.max_sentences} sentences OR up to "
-            f"{config.max_bullets} bullet points.\n\n"
+            f"Summarize {header} and infer its section metadata.\n"
+            "Return JSON only with keys: summary, section_type, page_section, section_relevance.\n"
+            f"- summary: a JSON array of <= {config.max_bullets} short bullet strings OR a single string "
+            f"no longer than {config.max_sentences} sentences.\n"
+            "- section_type: one of [abstract, introduction, methodology, results, conclusion, other].\n"
+            "- page_section: short section title from the page header (e.g., \"2.1 Memory Manager\"); "
+            "use \"unknown\" if missing.\n"
+            "- section_relevance: float weight (default 1.0). Suggested: abstract 1.3, introduction 1.15, "
+            "methodology 1.1, results 1.1, conclusion 1.2, other 1.0.\n\n"
             "Requirements:\n"
             "- Focus on the *main* ideas, definitions, claims, and any figure/table takeaway.\n"
             "- If the page is mostly references/appendix boilerplate, say so succinctly.\n"
             "- Do not invent content not present in the page.\n"
             "- Be specific (mention section/figure/table numbers if present).\n\n"
+            "- Infer section_type/page_section primarily from the page header and page number.\n"
+            "- Output JSON only. No extra text.\n\n"
             "OCR markdown for the page:\n"
             "---\n"
             f"{text_raw}\n"
@@ -98,12 +108,20 @@ def build_page_summary_prompt(
     # Default: Chinese
     return (
         "你在总结一篇学术 PDF 的单页内容。\n"
-        f"请对{header}做一个简洁摘要：不超过{config.max_sentences}句，或不超过{config.max_bullets}个要点。\n\n"
+        f"请对{header}做简洁摘要，并推断章节元信息。\n"
+        "仅输出 JSON，字段为：summary, section_type, page_section, section_relevance。\n"
+        f"- summary：不超过{config.max_bullets}条要点的 JSON 数组，或不超过{config.max_sentences}句的字符串。\n"
+        "- section_type：只能取 [abstract, introduction, methodology, results, conclusion, other]。\n"
+        "- page_section：页面顶部的章节标题（如“2.1 Memory Manager”）；没有则填“unknown”。\n"
+        "- section_relevance：浮点权重（默认 1.0），建议：abstract 1.3，introduction 1.15，"
+        "methodology 1.1，results 1.1，conclusion 1.2，other 1.0。\n\n"
         "要求：\n"
         "- 只总结页面中出现的主要观点/定义/方法/结论，以及图表要点（如有）。\n"
         "- 如果该页主要是参考文献/附录/模板性内容，请明确说明。\n"
         "- 不要编造页面中不存在的信息。\n"
         "- 尽量具体：如出现 Section/Figure/Table 编号，请点出。\n\n"
+        "- 章节类型与标题主要基于页首标题与页码判断。\n"
+        "- 仅输出 JSON，不要添加额外文字。\n\n"
         "该页 OCR markdown 内容如下：\n"
         "---\n"
         f"{text_raw}\n"

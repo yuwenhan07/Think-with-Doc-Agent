@@ -28,8 +28,8 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--index_dir", type=str, default="../demo/index_out/2310.08560v2", help="Directory containing summary index + per-page block shards")
-    parser.add_argument("--asset_base_dir", type=str, default="../demo/chunks/2310.08560v2", help="Base dir to resolve relative asset_path")
+    parser.add_argument("--index_dir", type=str, default="../demo/index_out-new/2310.08560v2", help="Directory containing summary index + per-page block shards")
+    parser.add_argument("--asset_base_dir", type=str, default="../demo/chunks-new/2310.08560v2", help="Base dir to resolve relative asset_path")
 
     parser.add_argument("--query", type=str, default=None, help="Text query (two-stage: summary -> per-page blocks)")
     parser.add_argument("--query_image", type=str, default=None, help="Image query path (optional)")

@@ -17,18 +17,26 @@ def _encode_image(path: str) -> str:
 def _build_multimodal_messages(prompt: str, evidence: List[Dict[str, Any]], *, max_images: int = 4) -> List[Dict[str, Any]]:
     contents: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
     used = 0
+    seen_paths = set()
     for item in evidence:
-        asset_path = item.get("asset_path")
-        if not asset_path:
-            continue
-        p = Path(str(asset_path))
-        if not p.exists():
-            continue
+        for key in ("asset_path", "page_image_path"):
+            path = item.get(key)
+            if not path:
+                continue
+            p = Path(str(path))
+            if not p.exists():
+                continue
+            p_str = str(p)
+            if p_str in seen_paths:
+                continue
+            if used >= max_images:
+                break
+            b64 = _encode_image(p_str)
+            contents.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+            seen_paths.add(p_str)
+            used += 1
         if used >= max_images:
             break
-        b64 = _encode_image(str(p))
-        contents.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
-        used += 1
     return [{"role": "user", "content": contents}]
 
 

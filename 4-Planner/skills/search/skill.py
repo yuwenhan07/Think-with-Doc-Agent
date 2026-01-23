@@ -14,15 +14,23 @@ def _apply_filters(
     filters: Dict[str, Any],
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     avoid = [s.lower() for s in filters.get("avoid_sections", [])]
+    avoid_types = [s.lower() for s in filters.get("avoid_section_types", [])]
     if not avoid:
-        return summary_hits, block_hits
+        if not avoid_types:
+            return summary_hits, block_hits
 
     def keep_text(item: Dict[str, Any]) -> bool:
         text = (item.get("text") or item.get("summary") or "").lower()
         return not any(a in text for a in avoid)
 
-    summary_hits = [h for h in summary_hits if keep_text(h)]
-    block_hits = [h for h in block_hits if keep_text(h)]
+    def keep_type(item: Dict[str, Any]) -> bool:
+        if not avoid_types:
+            return True
+        stype = str(item.get("section_type") or "").lower()
+        return stype not in avoid_types
+
+    summary_hits = [h for h in summary_hits if keep_text(h) and keep_type(h)]
+    block_hits = [h for h in block_hits if keep_text(h) and keep_type(h)]
     return summary_hits, block_hits
 
 
@@ -41,6 +49,7 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
     k_blocks = int(args.get("k_blocks", 30))
     final_topk = int(args.get("final_topk", k_blocks))
     filters = args.get("filters", {}) or {}
+    section_weights = args.get("section_weights")
 
     force_pages = filters.get("force_pages")
     if force_pages:
@@ -52,6 +61,7 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
             blocks_topk=k_blocks,
             final_topk=final_topk,
             asset_base_dir=str(ctx.asset_base_dir),
+            section_weights=section_weights,
         )
         summary_hits = []
         candidate_pages = list(force_pages)
@@ -65,6 +75,7 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
             blocks_topk=k_blocks,
             final_topk=final_topk,
             asset_base_dir=str(ctx.asset_base_dir),
+            section_weights=section_weights,
         )
         summary_hits = result.get("summary_hits", [])
         block_hits = result.get("block_hits", [])

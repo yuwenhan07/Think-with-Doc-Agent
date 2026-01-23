@@ -375,8 +375,11 @@ def build_page_blocks(
     """Build blocks for a single page (text blocks + cropped span blocks)."""
     page_number = int(page.get("page_number") or 0)
     text_raw = page.get("text_raw", "") or ""
-    spans = page.get("spans", []) or []
+    section_type = page.get("section_type")
+    page_section = page.get("page_section")
+    section_relevance = page.get("section_relevance")
     page_image_path = page.get("image_path")
+    spans = page.get("spans", []) or []
     smart = (((page.get("diagnostics") or {}).get("ocr") or {}).get("smart_resize") or {})
     smart_in_w = smart.get("in_w")
     smart_in_h = smart.get("in_h")
@@ -429,6 +432,10 @@ def build_page_blocks(
                 "asset_path": (span_assets.get(span_id) or {}).get("asset_path"),
                 "crop_work_size": (span_assets.get(span_id) or {}).get("work_size"),
                 "text": span_captions.get(span_id),
+                "section_type": section_type,
+                "page_section": page_section,
+                "section_relevance": section_relevance,
+                "page_image_path": page_image_path,
                 "source": "ocr_span",
             }
         )
@@ -446,6 +453,10 @@ def build_page_blocks(
                 "page_number": page_number,
                 "type": "text",
                 "text": b["text"].strip(),
+                "section_type": section_type,
+                "page_section": page_section,
+                "section_relevance": section_relevance,
+                "page_image_path": page_image_path,
                 "source": "ocr_md_rule",
             }
         )

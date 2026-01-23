@@ -12,8 +12,8 @@ from skills import LLMConfig
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--query", type=str, required=True)
-    parser.add_argument("--index_dir", type=str, default="../demo/index_out/2310.08560v2")
-    parser.add_argument("--asset_base_dir", type=str, default="../demo/chunks/2310.08560v2")
+    parser.add_argument("--index_dir", type=str, default="../demo/index_out-new/2310.08560v2")
+    parser.add_argument("--asset_base_dir", type=str, default="../demo/chunks-new/2310.08560v2")
     parser.add_argument("--max_turns", type=int, default=20)
     parser.add_argument("--max_search_calls", type=int, default=3)
     parser.add_argument("--max_rewrite_calls", type=int, default=2)

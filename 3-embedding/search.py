@@ -13,10 +13,45 @@ QIANFAN_URL = "https://qianfan.baidubce.com/v2/embeddings"
 QIANFAN_MODEL = "gme-qwen2-vl-2b-instruct"
 QIANFAN_TOKEN = os.environ.get("QianFan_API_KEY")
 
+DEFAULT_SECTION_WEIGHTS = {
+    "abstract": 1.3,
+    "introduction": 1.15,
+    "methodology": 1.1,
+    "results": 1.1,
+    "conclusion": 1.2,
+    "other": 1.0,
+}
+
 
 def l2_normalize(vec: np.ndarray) -> np.ndarray:
     denom = np.linalg.norm(vec) + 1e-12
     return vec / denom
+
+
+def _coerce_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_section_weights(section_weights: Optional[Dict[str, Any]]) -> Dict[str, float]:
+    weights = dict(DEFAULT_SECTION_WEIGHTS)
+    if isinstance(section_weights, dict):
+        for k, v in section_weights.items():
+            try:
+                weights[str(k).lower()] = float(v)
+            except (TypeError, ValueError):
+                continue
+    return weights
+
+
+def _resolve_section_weight(item: Dict[str, Any], weights: Dict[str, float]) -> float:
+    relevance = _coerce_float(item.get("section_relevance"))
+    if relevance is not None and relevance > 0:
+        return relevance
+    stype = str(item.get("section_type") or "other").lower()
+    return weights.get(stype, weights.get("other", 1.0))
 
 
 def load_jsonl(path: str) -> List[Dict[str, Any]]:
@@ -108,12 +143,14 @@ def search_blocks_in_pages(
     blocks_topk: int,
     final_topk: int,
     asset_base_dir: str = ".",
+    section_weights: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Search only selected page shards and merge results by score.
     Assumes qv is already L2-normalized.
     """
     merged: List[Dict[str, Any]] = []
+    weights = _normalize_section_weights(section_weights)
 
     for page_no in page_nos:
         try:
@@ -130,14 +167,24 @@ def search_blocks_in_pages(
             # Resolve asset_path for non-text blocks for convenience
             if item.get("type") != "text":
                 item["asset_path"] = resolve_asset_path(item.get("asset_path"), asset_base_dir)
-            merged.append(pretty_hit(item, float(score)))
+            item["page_image_path"] = resolve_asset_path(item.get("page_image_path"), asset_base_dir)
+
+            score_raw = float(score)
+            section_weight = _resolve_section_weight(item, weights)
+            merged.append(pretty_hit(item, score_raw * section_weight, score_raw=score_raw, section_weight=section_weight))
 
     # Merge-sort by score desc (IndexFlatIP with L2-normalized vectors => cosine similarity)
     merged.sort(key=lambda x: x["score"], reverse=True)
     return merged[:final_topk]
 
 
-def pretty_hit(item: Dict[str, Any], score: float) -> Dict[str, Any]:
+def pretty_hit(
+    item: Dict[str, Any],
+    score: float,
+    *,
+    score_raw: Optional[float] = None,
+    section_weight: Optional[float] = None,
+) -> Dict[str, Any]:
     # 精简输出字段，保留回链所需信息
     out = {
         "score": float(score),
@@ -145,7 +192,15 @@ def pretty_hit(item: Dict[str, Any], score: float) -> Dict[str, Any]:
         "id": item.get("id"),
         "block_id": item.get("block_id"),
         "type": item.get("type"),
+        "section_type": item.get("section_type"),
+        "page_section": item.get("page_section"),
+        "section_relevance": item.get("section_relevance"),
+        "page_image_path": item.get("page_image_path"),
     }
+    if score_raw is not None:
+        out["score_raw"] = float(score_raw)
+    if section_weight is not None:
+        out["section_weight"] = float(section_weight)
     if item.get("type") == "text":
         out["text"] = item.get("text")
     else:
@@ -164,6 +219,7 @@ def search_text_two_stage(
     blocks_topk: int = 50,
     final_topk: int = 10,
     asset_base_dir: str = ".",
+    section_weights: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Two-stage retrieval with per-page block shards:
@@ -174,6 +230,7 @@ def search_text_two_stage(
 
     # stage 1: summary
     sD, sI = faiss_search(summary_index, qv, summary_topk)
+    weights = _normalize_section_weights(section_weights)
     candidate_pages: List[int] = []
     summary_hits: List[Dict[str, Any]] = []
 
@@ -183,14 +240,26 @@ def search_text_two_stage(
         item = summary_meta[idx]
         page_no = item["page_number"]
         candidate_pages.append(page_no)
+        item = dict(item)
+        item["page_image_path"] = resolve_asset_path(item.get("page_image_path"), asset_base_dir)
+        score_raw = float(score)
+        section_weight = _resolve_section_weight(item, weights)
         summary_hits.append({
-            "score": float(score),
+            "score": score_raw * section_weight,
+            "score_raw": score_raw,
+            "section_weight": section_weight,
             "page_number": page_no,
             "id": item["id"],
             "summary": item.get("text"),
+            "section_type": item.get("section_type"),
+            "page_section": item.get("page_section"),
+            "section_relevance": item.get("section_relevance"),
+            "page_image_path": item.get("page_image_path"),
         })
 
-    # de-dup but keep order (Python 3.7+ preserves dict insertion order)
+    # Re-rank by weighted score, then de-dup pages while keeping order.
+    summary_hits.sort(key=lambda x: x["score"], reverse=True)
+    candidate_pages = [h["page_number"] for h in summary_hits]
     candidate_pages = list(dict.fromkeys(candidate_pages))
 
     # stage 2: blocks (search only candidate pages)
@@ -201,6 +270,7 @@ def search_text_two_stage(
         blocks_topk=blocks_topk,
         final_topk=final_topk,
         asset_base_dir=asset_base_dir,
+        section_weights=section_weights,
     )
 
     return {
@@ -218,6 +288,7 @@ def search_image_blocks(
     topk: int = 10,
     asset_base_dir: str = ".",
     restrict_pages: Optional[List[int]] = None,
+    section_weights: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Image retrieval over per-page block shards.
@@ -237,6 +308,7 @@ def search_image_blocks(
         blocks_topk=max(topk, 50),  # a bit wider per-shard, then global topk
         final_topk=topk,
         asset_base_dir=asset_base_dir,
+        section_weights=section_weights,
     )
 
     return {
@@ -244,5 +316,3 @@ def search_image_blocks(
         "searched_pages": page_nos,
         "block_hits": block_hits,
     }
-
-

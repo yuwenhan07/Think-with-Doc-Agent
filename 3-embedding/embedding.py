@@ -86,12 +86,20 @@ def iter_summary_items(doc: dict):
             "doc_id": doc_id,
             "page_number": p["page_number"],
             "text": s,
+            "section_type": p.get("section_type"),
+            "page_section": p.get("page_section"),
+            "section_relevance": p.get("section_relevance"),
+            "page_image_path": p.get("image_path"),
         }
 
 def iter_block_items(doc: dict):
     doc_id = doc.get("doc_id")
     for p in doc["pages"]:
         page_no = p["page_number"]
+        page_section_type = p.get("section_type")
+        page_section = p.get("page_section")
+        page_section_relevance = p.get("section_relevance")
+        page_image_path = p.get("image_path")
         for b in p.get("blocks", []):
             block_id = b.get("block_id")
             btype = b.get("type")
@@ -106,6 +114,10 @@ def iter_block_items(doc: dict):
                 "bbox_px": b.get("bbox_px"),
                 "crop_work_size": b.get("crop_work_size"),
                 "span_id": b.get("span_id"),
+                "section_type": b.get("section_type") or page_section_type,
+                "page_section": b.get("page_section") or page_section,
+                "section_relevance": b.get("section_relevance") if b.get("section_relevance") is not None else page_section_relevance,
+                "page_image_path": b.get("page_image_path") or page_image_path,
                 "source": b.get("source"),
             }
             if not item["text"] and not item["asset_path"]:

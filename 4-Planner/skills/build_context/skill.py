@@ -37,8 +37,14 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
             "text": text,
             "bbox_px": b.get("bbox_px"),
             "asset_path": b.get("asset_path"),
+            "page_image_path": b.get("page_image_path"),
             "span_id": b.get("span_id"),
             "score": b.get("score"),
+            "score_raw": b.get("score_raw"),
+            "section_weight": b.get("section_weight"),
+            "section_type": b.get("section_type"),
+            "page_section": b.get("page_section"),
+            "section_relevance": b.get("section_relevance"),
         })
 
     return {
