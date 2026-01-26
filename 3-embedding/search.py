@@ -1,7 +1,6 @@
 import os
 # Use spawn to avoid fork+Cuda exit crashes when vLLM uses multiprocessing.
 os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
 import json
 import os

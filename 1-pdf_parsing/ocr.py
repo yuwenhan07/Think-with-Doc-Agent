@@ -20,15 +20,11 @@ def encode_image(image_path):
 
 
 # @title inference function with API
-def inference_with_api(image_path, prompt, model_id="models/Qwen3-VL-32B-Instruct", min_pixels=512*32*32, max_pixels=2048*32*32):
+def inference_with_api(image_path, prompt, model_id="qwen3-vl-32b-instruct", min_pixels=512*32*32, max_pixels=2048*32*32):
     base64_image = encode_image(image_path)
-    api_key = (
-        os.environ.get("QianFan_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or "EMPTY"
-    )
+    api_key = os.environ.get("QianFan_API_KEY")
     client = OpenAI(
-        base_url="http://localhost:8003/v1",
+        base_url="https://qianfan.baidubce.com/v2",
         api_key=api_key,
     )
 
@@ -61,7 +57,7 @@ def inference_with_api(image_path, prompt, model_id="models/Qwen3-VL-32B-Instruc
 @dataclass
 class OCRConfig:
     prompt: str = "qwenvl markdown"
-    model_id: str = "models/Qwen3-VL-32B-Instruct"
+    model_id: str = "qwen3-vl-32b-instruct"
     min_pixels: int = 512 * 32 * 32
     max_pixels: int = 4608 * 32 * 32
     factor: int = 32

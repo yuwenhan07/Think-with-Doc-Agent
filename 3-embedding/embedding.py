@@ -12,7 +12,6 @@ from PIL import Image
 from vllm import LLM
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
 VLLM_MODEL = "/home/work/models/Qwen3-VL-Embedding-2B"
 VLLM_RUNNER = "pooling"

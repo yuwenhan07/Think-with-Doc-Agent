@@ -11,11 +11,7 @@ from .context import LLMConfig
 
 
 def get_llm_client(cfg: LLMConfig) -> OpenAI:
-    api_key = (
-        os.environ.get(cfg.api_key_env)
-        or os.environ.get("OPENAI_API_KEY")
-        or "EMPTY"
-    )
+    api_key = os.environ.get("QianFan_API_KEY")
     return OpenAI(base_url=cfg.base_url, api_key=api_key)
 
 

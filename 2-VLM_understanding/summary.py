@@ -29,17 +29,12 @@ class QianfanVLMClient:
         self,
         *,
         api_key_env: str = "QianFan_API_KEY",
-        base_url: str = "http://localhost:8003/v1",
-        model_id: str = "models/Qwen3-VL-32B-Instruct",
+        base_url: str = "https://qianfan.baidubce.com/v2",
+        model_id: str = "qwen3-vl-32b-instruct",
         min_pixels: int = 512 * 32 * 32,
         max_pixels: int = 2048 * 32 * 32,
     ) -> None:
-        api_key = (
-            os.environ.get(api_key_env)
-            or os.environ.get("OPENAI_API_KEY")
-            or os.environ.get("QIANFAN_API_KEY")
-            or "EMPTY"
-        )
+        api_key = os.environ.get("QianFan_API_KEY")
 
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model_id = model_id
