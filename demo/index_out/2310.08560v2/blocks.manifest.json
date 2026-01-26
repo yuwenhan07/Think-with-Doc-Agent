@@ -4,79 +4,79 @@
   "pages": [
     {
       "page_number": 1,
-      "count": 12,
+      "count": 16,
       "index": "blocks.p0001.index.faiss",
       "meta": "blocks.p0001.meta.jsonl"
     },
     {
       "page_number": 2,
-      "count": 13,
+      "count": 17,
       "index": "blocks.p0002.index.faiss",
       "meta": "blocks.p0002.meta.jsonl"
     },
     {
       "page_number": 3,
-      "count": 7,
+      "count": 13,
       "index": "blocks.p0003.index.faiss",
       "meta": "blocks.p0003.meta.jsonl"
     },
     {
       "page_number": 4,
-      "count": 15,
+      "count": 22,
       "index": "blocks.p0004.index.faiss",
       "meta": "blocks.p0004.meta.jsonl"
     },
     {
       "page_number": 5,
-      "count": 17,
+      "count": 19,
       "index": "blocks.p0005.index.faiss",
       "meta": "blocks.p0005.meta.jsonl"
     },
     {
       "page_number": 6,
-      "count": 12,
+      "count": 15,
       "index": "blocks.p0006.index.faiss",
       "meta": "blocks.p0006.meta.jsonl"
     },
     {
       "page_number": 7,
-      "count": 12,
+      "count": 17,
       "index": "blocks.p0007.index.faiss",
       "meta": "blocks.p0007.meta.jsonl"
     },
     {
       "page_number": 8,
-      "count": 9,
+      "count": 13,
       "index": "blocks.p0008.index.faiss",
       "meta": "blocks.p0008.meta.jsonl"
     },
     {
       "page_number": 9,
-      "count": 24,
+      "count": 23,
       "index": "blocks.p0009.index.faiss",
       "meta": "blocks.p0009.meta.jsonl"
     },
     {
       "page_number": 10,
-      "count": 14,
+      "count": 17,
       "index": "blocks.p0010.index.faiss",
       "meta": "blocks.p0010.meta.jsonl"
     },
     {
       "page_number": 11,
-      "count": 15,
+      "count": 16,
       "index": "blocks.p0011.index.faiss",
       "meta": "blocks.p0011.meta.jsonl"
     },
     {
       "page_number": 12,
-      "count": 20,
+      "count": 16,
       "index": "blocks.p0012.index.faiss",
       "meta": "blocks.p0012.meta.jsonl"
     },
     {
       "page_number": 13,
-      "count": 6,
+      "count": 7,
       "index": "blocks.p0013.index.faiss",
       "meta": "blocks.p0013.meta.jsonl"
     }

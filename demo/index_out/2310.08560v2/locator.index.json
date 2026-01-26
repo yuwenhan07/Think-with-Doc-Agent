@@ -1,0 +1,87 @@
+{
+  "doc_id": "sha256:9f674bcff69c86f11c813dcfad613d8841f5f8ed17979e3c4df06a91df7762e0",
+  "figures": {},
+  "tables": {
+    "2": [
+      {
+        "page_number": 5,
+        "block_id": "p5:b0017",
+        "type": "text",
+        "text": "Table 2 shows the performance of MemGPT vs the fixed-memory baselines. We compare MemGPT using different underlying LLMs, and compare against using the base LLM without MemGPT as a baseline. The baselines are able to see a lossy summarization of the past five conversations to mimic an extended recursive summarization procedure, while MemGPT instead has access to the full conversation history but must access it via paginated search queries to recall memory (in order to bring them into main context). In this task, we see that MemGPT clearly improves the performance of the underlying base LLM: there is a clear drop in both accuracy and ROUGE scores when going from MemGPT to the corresponding LLM baselines.",
+        "asset_path": null,
+        "bbox_px": null,
+        "span_id": null,
+        "source": "ocr_md_rule"
+      }
+    ]
+  },
+  "sections": {},
+  "page_headings": {
+    "5": [
+      "| GPT-4             | 32.1%      | 0.296         |"
+    ],
+    "11": [
+      "#### 6.1.1. MEMGPT INSTRUCTIONS (DMR)"
+    ],
+    "12": [
+      "## 6.1.4. DOCUMENT ANALYSIS INSTRUCTIONS"
+    ],
+    "13": [
+      "## 6.1.6. K/V TASK INSTRUCTIONS"
+    ]
+  },
+  "pages": {
+    "1": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0001.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems **Charles Packer**$^{1}$ **Sarah Wooders**$^{1}$ **Kevin Lin**$^{1}$ **Vivian Fang**$^{1}$ **Shishir G. Patil**$^{1}$ **Ion Stoica**$^{1}$ **Joseph E. Gonzalez**$^{1}$ --- ## Abstract Large language models (LLMs) have revolutionized AI, but are constrained by limited context windows, hindering their utility in tasks like extended conversations and document analysis. To enable using context beyond limited context windows, we propose *virtual context man"
+    },
+    "2": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0002.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## Figure 1: MemGPT (left) writes data to persistent memory after it receives a system alert about limited context space. **February 7** > **User:** How was your day today? > **MemGPT:** fun my bf james baked me a birthday cake > **User:** Oh wow, happy birthday! 🎉 > **System Alert: Memory Pressure** > `working_context.append(\"Birthday is February 7\")` > `working_context.append(\"Boyfriend named James\")` --- ## Figure 2: MemGPT (left) can search out-of-"
+    },
+    "3": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0003.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## Figure 3 <!-- Image: LLM Finite Context Window (e.g. 8k tokens) --> - **Prompt Tokens** - **System Instructions** (Read-Only, static) — MemGPT System Prompt - **Working Context** (Read-Write) — Write via Functions - **FIFO Queue** (Read-Write) — Write via Queue Manager - **Completion Tokens** - **Output Buffer** **External Components:** - **Archival Storage** (Read via Functions, Write via Functions) - **Function Executor** (interacts with Working C"
+    },
+    "4": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0004.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## Table 1. Comparing context lengths of commonly used models and LLM APIs (data collected 1/2024) *Approximate message count assuming a preprompt of 1k tokens, and an average message size of ~50 tokens (~250 characters). 'Open' means the model is open-source or open-weights (vs only available behind an API).* | Model / API name | Open? | Context Window Tokens | *Messages | |---------------------------|-------|------------------------|-----------| | Ll"
+    },
+    "5": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0005.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## Table 2. Deep memory retrieval (DMR) performance. In this task, the agent is asked a specific question about a topic discussed in a prior conversation (sessions 1–5). The agent’s response is scored against the gold answer. MemGPT significantly outperforms the fixed-context baselines. | Model | Accuracy ↑ | ROUGE-L (R) ↑ | |-------------------|------------|---------------| | GPT-3.5 Turbo | 38.7% | 0.394 | | + MemGPT | 66.9% | 0.629 | | GPT-4 | 32.1%"
+    },
+    "6": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0006.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## Figure 5. Document QA task performance. MemGPT's performance is unaffected by increased context length. Methods such as truncation can extend the effective context lengths of fixed-length models such as GPT-4, but such compression methods will lead to performance degradation as the necessary compression grows. Running MemGPT with GPT-4 and GPT-4 Turbo have equivalent results on this task. ![Figure 5](figure5.png) ## Figure 6. An example of MemGPT (l"
+    },
+    "7": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0007.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## Figure 7. Nested KV retrieval task performance. MemGPT is the only approach that is able to consistently complete the nested KV task beyond 2 nesting levels. While GPT-4 Turbo performs better as a baseline, MemGPT with GPT-4 Turbo performs worse than MemGPT with GPT-4. ![Figure 7: Nested KV retrieval task performance](https://i.imgur.com/placeholder.png) *Accuracy vs. Nesting Level for different models:* - **GPT-3.5**: Dashed blue line with triangle"
+    },
+    "8": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0008.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems where values themselves may be keys, thus requiring the agent to perform a multi-hop lookup. In our setup, we fix the total number of UUIDs pairs to 140, corresponding to roughly 8k tokens (the context length of our GPT-4 baseline). We vary the total number of nesting levels from 0 (the initial key-value pair’s value is not a key) to 4 (ie 4 total KV lookups are required to find the final value), and sample 30 different ordering configurations includin"
+    },
+    "9": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0009.png",
+      "text_snippet": "# References Iz Beltagy, Matthew E Peters, and Arman Cohan. Longformer: The long-document transformer. *arXiv preprint arXiv:2004.05150*, 2020. Sebastian Borgeaud, Arthur Mensch, Jordan Hoffmann, Trevor Cai, Eliza Rutherford, Katie Millican, George Bm Van Den Driessche, Jean-Baptiste Lespiau, Bogdan Damoc, Aidan Clark, et al. Improving language models by retrieving from trillions of tokens. In *International conference on machine learning*, pp. 2206–2240. PMLR, 2022. Tom Brown, Benjamin Mann, Ni"
+    },
+    "10": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0010.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems --- **feedback.** *Advances in Neural Information Processing Systems*, 35:27730–27744, 2022. **Joon Sung Park, Joseph C O’Brien, Carrie J Cai, Meredith Ringel Morris, Percy Liang, and Michael S Bernstein.** Generative agents: Interactive simulacra of human behavior. *arXiv preprint arXiv:2304.03442*, 2023. **David A Patterson, Garth Gibson, and Randy H Katz.** A case for redundant arrays of inexpensive disks (raid). In *Proceedings of the 1988 ACM SIGM"
+    },
+    "11": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0011.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## 6. Appendix ### 6.1. Prompts and instructions The MemGPT prompts have been edited for brevity. For full implementation details (including exact prompts) visit https://research.memgpt.ai. #### 6.1.1. MEMGPT INSTRUCTIONS (DMR) Example instructions used in the MemGPT persona for chat/dialogue-related tasks. > The following is information about myself. My task is to completely immerse myself in this role (I should never say that I am an AI, and should r"
+    },
+    "12": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0012.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems ## 6.1.4. DOCUMENT ANALYSIS INSTRUCTIONS Example instructions used in the preprompt for document analysis tasks. > **question that can be answered using the persona information (that’s considered cheating).** > > Instead, write a question that can only be answered by looking at the old chat log (and is not contained in the persona information). > > For example, given the following chat log and persona summaries: > > **old chat between user A and user B"
+    },
+    "13": {
+      "image_path": "/Users/yuwenhan/Library/Mobile Documents/com~apple~CloudDocs/Documents/🐟/科研/Learn.agent/DocAgent/demo/imgs/2310.08560v2/page_0013.png",
+      "text_snippet": "# MemGPT: Towards LLMs as Operating Systems answers]\". The questions is provided in the format \"QUESTION: [question]\". If the LLM response contains both the correct answer and corresponding document text, the response is correct. Even if the LLM's answer and the true answer are slightly different in wording, the response is still correct. For example, if the answer is more specific than the true answer or uses a different phrasing that is still correct, the response is correct. If the LLM respon"
+    }
+  }
+}
