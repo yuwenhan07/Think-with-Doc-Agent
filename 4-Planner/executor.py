@@ -31,6 +31,9 @@ class ExecutionState:
     last_search_result: Optional[Dict[str, Any]] = None
     last_context: Optional[Dict[str, Any]] = None
     last_answer: Optional[Dict[str, Any]] = None
+    last_rewrite_result: Optional[Dict[str, Any]] = None
+    last_rewrite_query: Optional[str] = None
+    last_rewrites: List[str] = field(default_factory=list)
     history: List[Dict[str, Any]] = field(default_factory=list)
     trace: List[Dict[str, Any]] = field(default_factory=list)
     search_calls: int = 0
@@ -147,10 +150,22 @@ class Executor:
                 "verdict": obs.get("verdict") if isinstance(obs, dict) else None,
                 "issues": obs.get("issues") if isinstance(obs, dict) else None,
             }
+        if state.last_tool == "rewrite":
+            rewrites = obs.get("rewrites") if isinstance(obs, dict) else None
+            rewrites_count = len(rewrites) if isinstance(rewrites, list) else 0
+            return {
+                "tool": "rewrite",
+                "rewrites_count": rewrites_count,
+            }
         return {"tool": state.last_tool}
 
     def _record(self, state: ExecutionState, tool: str, args: Dict[str, Any], obs: Dict[str, Any]) -> None:
-        state.history.append({"tool": tool, "summary": {k: obs.get(k) for k in ("verdict", "stats", "issues") if k in obs}})
+        summary = {k: obs.get(k) for k in ("verdict", "stats", "issues") if k in obs}
+        if tool == "rewrite":
+            rewrites = obs.get("rewrites") if isinstance(obs, dict) else None
+            if isinstance(rewrites, list):
+                summary["rewrites_count"] = len(rewrites)
+        state.history.append({"tool": tool, "summary": summary})
         state.trace.append({"tool": tool, "args": args, "observation": obs})
         state.last_tool = tool
         state.last_observation = obs
@@ -205,8 +220,13 @@ class Executor:
             if state.search_calls >= self.budget.max_search_calls:
                 return {"final_text": "Search budget exceeded.", "citations": []}
             q = args.get("query") or state.query
-            state.search_query_counts[q] = state.search_query_counts.get(q, 0) + 1
-            if state.search_query_counts[q] > self.budget.max_same_query_search:
+            queries = args.get("queries")
+            if isinstance(queries, list) and queries:
+                q_key = "||".join(str(item) for item in queries)
+            else:
+                q_key = str(q)
+            state.search_query_counts[q_key] = state.search_query_counts.get(q_key, 0) + 1
+            if state.search_query_counts[q_key] > self.budget.max_same_query_search:
                 return {"final_text": "Repeated search exceeded limit.", "citations": []}
             state.search_calls += 1
         if tool == "rewrite":
@@ -219,6 +239,21 @@ class Executor:
 
     def _normalize_args(self, state: ExecutionState, tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
         # Inject stateful defaults to avoid planner omission causing empty context.
+        if tool == "search":
+            base_query = args.get("query") or state.query
+            args["query"] = base_query
+            queries = args.get("queries")
+            if not queries and state.last_rewrites and state.last_rewrite_query == base_query:
+                queries = [base_query] + list(state.last_rewrites)
+            if isinstance(queries, list):
+                deduped: List[str] = []
+                for q in queries:
+                    q_str = str(q).strip()
+                    if not q_str or q_str in deduped:
+                        continue
+                    deduped.append(q_str)
+                if deduped and (len(deduped) > 1 or deduped[0] != base_query):
+                    args["queries"] = deduped
         if tool == "build_context":
             if "search_result" not in args:
                 args["search_result"] = state.last_search_result or {}
@@ -428,6 +463,16 @@ class Executor:
                     "trace": state.trace,
                 }
 
+            if tool == "rewrite":
+                state.last_rewrite_result = obs
+                state.last_rewrite_query = args.get("query") or state.query
+                state.last_rewrites = []
+                rewrites = obs.get("rewrites") if isinstance(obs, dict) else None
+                if isinstance(rewrites, list):
+                    for r in rewrites:
+                        r_str = str(r).strip()
+                        if r_str and r_str not in state.last_rewrites:
+                            state.last_rewrites.append(r_str)
             if tool == "search":
                 state.last_search_result = obs
             if tool == "build_context":
