@@ -22,6 +22,7 @@ from search import (
     load_json,
     search_text_two_stage,
     search_image_blocks,
+    shutdown_vllm_client,
 )
 
 def main():
@@ -54,33 +55,36 @@ def main():
 
     did_any = False
 
-    if args.query:
-        did_any = True
-        result = search_text_two_stage(
-            query=args.query,
-            index_dir=index_dir,
-            summary_index=summary_index,
-            summary_meta=summary_meta,
-            summary_topk=args.summary_topk,
-            blocks_topk=args.blocks_topk,
-            final_topk=args.final_topk,
-            asset_base_dir=args.asset_base_dir,
-        )
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+    try:
+        if args.query:
+            did_any = True
+            result = search_text_two_stage(
+                query=args.query,
+                index_dir=index_dir,
+                summary_index=summary_index,
+                summary_meta=summary_meta,
+                summary_topk=args.summary_topk,
+                blocks_topk=args.blocks_topk,
+                final_topk=args.final_topk,
+                asset_base_dir=args.asset_base_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
 
-    if args.query_image:
-        did_any = True
-        result = search_image_blocks(
-            image_path=args.query_image,
-            index_dir=index_dir,
-            manifest=manifest,
-            topk=args.final_topk,
-            asset_base_dir=args.asset_base_dir,
-        )
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.query_image:
+            did_any = True
+            result = search_image_blocks(
+                image_path=args.query_image,
+                index_dir=index_dir,
+                manifest=manifest,
+                topk=args.final_topk,
+                asset_base_dir=args.asset_base_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
 
-    if not did_any:
-        print("Nothing to do. Provide --query or --query_image.")
+        if not did_any:
+            print("Nothing to do. Provide --query or --query_image.")
+    finally:
+        shutdown_vllm_client()
 
 
 if __name__ == "__main__":

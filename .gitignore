@@ -13,3 +13,5 @@ visulaize/runs/
 
 data/
 .DS_Store
+
+core*

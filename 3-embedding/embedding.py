@@ -12,7 +12,7 @@ from vllm import LLM
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
-VLLM_MODEL = "/models/Qwen3-VL-Embedding-2B"
+VLLM_MODEL = "/home/work/models/Qwen3-VL-Embedding-2B"
 VLLM_RUNNER = "pooling"
 IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
 _VLLM_CLIENT: Optional[LLM] = None

@@ -1,4 +1,6 @@
 import os
+# Use spawn to avoid fork+Cuda exit crashes when vLLM uses multiprocessing.
+os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
 os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
 import json
@@ -12,7 +14,7 @@ import faiss
 from PIL import Image
 from vllm import LLM
 
-VLLM_MODEL = "/models/Qwen3-VL-Embedding-2B"
+VLLM_MODEL = "/home/work/models/Qwen3-VL-Embedding-2B"
 VLLM_RUNNER = "pooling"
 IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
 _VLLM_CLIENT: Optional[LLM] = None
@@ -28,6 +30,18 @@ def _get_vllm_client() -> LLM:
             tensor_parallel_size=VLLM_TP,
         )
     return _VLLM_CLIENT
+
+
+def shutdown_vllm_client() -> None:
+    """Cleanly stop vLLM engine processes to avoid core dumps on exit."""
+    global _VLLM_CLIENT
+    if _VLLM_CLIENT is None:
+        return
+    try:
+        # vLLM does not expose a public close() yet; use engine_core shutdown.
+        _VLLM_CLIENT.llm_engine.engine_core.shutdown()
+    finally:
+        _VLLM_CLIENT = None
 
 
 def l2_normalize(vec: np.ndarray) -> np.ndarray:
