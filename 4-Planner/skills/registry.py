@@ -5,6 +5,7 @@ from typing import Callable, Dict
 from .context import ExecutionContext, LLMConfig
 from .rewrite.skill import execute as rewrite_execute
 from .search.skill import execute as search_execute
+from .locator.skill import execute as locator_execute
 from .judge_retrieval.skill import execute as judge_retrieval_execute
 from .build_context.skill import execute as build_context_execute
 from .answer.skill import execute as answer_execute
@@ -16,6 +17,7 @@ SkillFn = Callable[[dict, ExecutionContext, LLMConfig], dict]
 SKILL_REGISTRY: Dict[str, SkillFn] = {
     "rewrite": rewrite_execute,
     "search": search_execute,
+    "locator": locator_execute,
     "judge_retrieval": judge_retrieval_execute,
     "build_context": build_context_execute,
     "answer": answer_execute,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import copy
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -43,6 +44,7 @@ class ExecutionState:
 
 
 _SEARCH_MODULE: Optional[Any] = None
+_LOCATOR_RE = re.compile(r"\b(page|p\.|figure|fig\.|table)\b", re.IGNORECASE)
 
 
 def _load_search_module(root: Path):
@@ -132,6 +134,22 @@ class Executor:
             pages = sorted(set(pages))
             return {
                 "tool": "build_context",
+                "evidence_count": len(evidence) if isinstance(evidence, list) else 0,
+                "pages": pages[:5],
+            }
+        if state.last_tool == "locator":
+            context = obs.get("context", {}) if isinstance(obs, dict) else {}
+            evidence = context.get("evidence", []) if isinstance(context, dict) else []
+            pages = []
+            for item in evidence:
+                if not isinstance(item, dict):
+                    continue
+                page = item.get("page")
+                if page is not None:
+                    pages.append(page)
+            pages = sorted(set(pages))
+            return {
+                "tool": "locator",
                 "evidence_count": len(evidence) if isinstance(evidence, list) else 0,
                 "pages": pages[:5],
             }
@@ -268,6 +286,9 @@ class Executor:
                 args.pop("answer", None)
             if "context" not in args:
                 args["context"] = state.last_context or {}
+        elif tool == "locator":
+            if "query" not in args:
+                args["query"] = state.query
         elif tool == "judge_answer":
             if "context" not in args:
                 args["context"] = state.last_context or {}
@@ -279,6 +300,12 @@ class Executor:
             if "query" not in args:
                 args["query"] = state.query
         return args
+
+    def _has_tool(self, state: ExecutionState, name: str) -> bool:
+        return any(step.get("tool") == name for step in state.history)
+
+    def _needs_locator(self, query: str) -> bool:
+        return bool(_LOCATOR_RE.search(query or ""))
 
     def _final_not_answerable(self) -> Dict[str, Any]:
         return {"final_text": "not answerable", "citations": [], "confidence": 0.0}
@@ -355,40 +382,49 @@ class Executor:
 
         while state.turn < self.budget.max_turns:
             state.turn += 1
-            forced = self._force_judge(state)
-            if forced:
-                plan = forced
+            if (
+                state.turn == 1
+                and not state.last_context
+                and not state.last_search_result
+                and not self._has_tool(state, "locator")
+                and self._needs_locator(state.query)
+            ):
+                plan = {"tool": "locator", "args": {"query": state.query}}
             else:
-                planner_input = {
-                    "query": state.query,
-                    "turn": state.turn,
-                    "budget": self._budget_snapshot(state),
-                    "history": self._summarize_history(state),
-                    "last_observation": self._summarize_observation(state),
-                }
-                plan = None
-                max_retries = 2
-                for attempt in range(max_retries + 1):
-                    try:
-                        plan, planner_trace = self.planner.plan_with_trace(planner_input)
-                        self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
-                        if plan:
-                            break
-                    except Exception as exc:
-                        state.trace.append({
-                            "tool": "planner_error",
-                            "args": {"turn": state.turn, "input": planner_input, "attempt": attempt + 1},
-                            "observation": {"error": str(exc)},
-                        })
-                        plan = None
-                    if attempt == max_retries:
-                        return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
-                if not plan:
-                    fallback = self._fallback_plan(state, {"final": {}})
-                    if fallback:
-                        plan = fallback
-                    else:
-                        return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
+                forced = self._force_judge(state)
+                if forced:
+                    plan = forced
+                else:
+                    planner_input = {
+                        "query": state.query,
+                        "turn": state.turn,
+                        "budget": self._budget_snapshot(state),
+                        "history": self._summarize_history(state),
+                        "last_observation": self._summarize_observation(state),
+                    }
+                    plan = None
+                    max_retries = 2
+                    for attempt in range(max_retries + 1):
+                        try:
+                            plan, planner_trace = self.planner.plan_with_trace(planner_input)
+                            self._record_planner(state, planner_input, copy.deepcopy(plan), planner_trace)
+                            if plan:
+                                break
+                        except Exception as exc:
+                            state.trace.append({
+                                "tool": "planner_error",
+                                "args": {"turn": state.turn, "input": planner_input, "attempt": attempt + 1},
+                                "observation": {"error": str(exc)},
+                            })
+                            plan = None
+                        if attempt == max_retries:
+                            return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
+                    if not plan:
+                        fallback = self._fallback_plan(state, {"final": {}})
+                        if fallback:
+                            plan = fallback
+                        else:
+                            return {"final": {"final_text": "Planner output is not valid JSON.", "citations": []}, "trace": state.trace}
 
             fallback = self._fallback_plan(state, plan)
             if fallback:
@@ -479,6 +515,8 @@ class Executor:
             if tool == "search":
                 state.last_search_result = obs
             if tool == "build_context":
+                state.last_context = obs.get("context")
+            if tool == "locator":
                 state.last_context = obs.get("context")
             if tool == "answer":
                 state.last_answer = obs

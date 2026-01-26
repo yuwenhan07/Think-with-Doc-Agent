@@ -170,11 +170,19 @@ def build_locator_index(doc: Dict[str, Any]) -> Dict[str, Any]:
         "tables": {},
         "sections": {},
         "page_headings": {},
+        "pages": {},
     }
 
     for page in doc.get("pages", []):
         page_no = page.get("page_number")
         text_raw = page.get("text_raw") or ""
+        image_path = page.get("image_path")
+        if page_no is not None and image_path:
+            snippet = re.sub(r"\s+", " ", text_raw).strip()
+            locator["pages"][str(page_no)] = {
+                "image_path": image_path,
+                "text_snippet": snippet[:500],
+            }
         headings = _extract_headings(text_raw)
         if headings:
             locator["page_headings"][str(page_no)] = headings
