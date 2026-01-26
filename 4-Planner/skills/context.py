@@ -22,3 +22,4 @@ class ExecutionContext:
     summary_index: Any
     summary_meta: List[Dict[str, Any]]
     manifest: Dict[str, Any]
+    locator: Dict[str, Any]

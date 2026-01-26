@@ -76,6 +76,8 @@ class Executor:
         summary_meta = search_module.load_jsonl(str(index_dir / "summary.meta.jsonl"))
         manifest_path = index_dir / "blocks.manifest.json"
         manifest = search_module.load_json(str(manifest_path)) if manifest_path.exists() else {"pages": []}
+        locator_path = index_dir / "locator.index.json"
+        locator = search_module.load_json(str(locator_path)) if locator_path.exists() else {}
 
         self.ctx = ExecutionContext(
             index_dir=index_dir,
@@ -84,6 +86,7 @@ class Executor:
             summary_index=summary_index,
             summary_meta=summary_meta,
             manifest=manifest,
+            locator=locator,
         )
 
         self.planner = LLMPlanner(planner_config)

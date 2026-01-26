@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..context import ExecutionContext, LLMConfig
 
 
 _REF_RE = re.compile(r"\b(references|bibliography|reference)\b", re.IGNORECASE)
+_PAGE_RE = re.compile(r"\bpage\s+(\d+)\b", re.IGNORECASE)
+_PAGE_SHORT_RE = re.compile(r"\bp\.?\s*(\d+)\b", re.IGNORECASE)
+_FIGURE_RE = re.compile(r"\bfig(?:ure)?\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
+_TABLE_RE = re.compile(r"\btable\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
+_SECTION_RE = re.compile(r"\bsection\s+(\d+(?:\.\d+)*)\b", re.IGNORECASE)
 
 def _apply_filters(
     summary_hits: List[Dict[str, Any]],
@@ -84,6 +89,60 @@ def _merge_hits(hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+def _parse_query_locators(query: str) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"page": None, "figure": None, "table": None, "section": None}
+    if not query:
+        return out
+    m = _PAGE_RE.search(query)
+    if not m:
+        m = _PAGE_SHORT_RE.search(query)
+    if m:
+        out["page"] = int(m.group(1))
+    m = _FIGURE_RE.search(query)
+    if m:
+        out["figure"] = m.group(1)
+    m = _TABLE_RE.search(query)
+    if m:
+        out["table"] = m.group(1)
+    m = _SECTION_RE.search(query)
+    if m:
+        out["section"] = m.group(1)
+    return out
+
+
+def _collect_locator_entries(
+    locator: Dict[str, Any],
+    page_no: Optional[int],
+    figure_label: Optional[str],
+    table_label: Optional[str],
+) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    if figure_label:
+        entries.extend(locator.get("figures", {}).get(str(figure_label), []))
+    if table_label:
+        entries.extend(locator.get("tables", {}).get(str(table_label), []))
+    if page_no is None:
+        return entries
+    return [e for e in entries if e.get("page_number") == page_no]
+
+
+def _locator_entries_to_hits(
+    entries: List[Dict[str, Any]],
+    ctx: ExecutionContext,
+) -> List[Dict[str, Any]]:
+    hits: List[Dict[str, Any]] = []
+    for entry in entries:
+        item = dict(entry)
+        if item.get("type") != "text":
+            item["asset_path"] = ctx.search_module.resolve_asset_path(
+                item.get("asset_path"), str(ctx.asset_base_dir)
+            )
+        hit = ctx.search_module.pretty_hit(item, 1.0)
+        hit["score_reason"] = "locator"
+        hits.append(hit)
+    return hits
+
+
 def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict[str, Any]:
     query = args.get("query", "")
     queries = _normalize_queries(query, args.get("queries"))
@@ -93,6 +152,33 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
     filters = args.get("filters", {}) or {}
 
     force_pages = filters.get("force_pages")
+    locator = ctx.locator or {}
+    locator_hits: List[Dict[str, Any]] = []
+
+    if not force_pages and query:
+        loc = _parse_query_locators(query)
+        page_no = loc.get("page")
+        figure_label = loc.get("figure")
+        table_label = loc.get("table")
+        section_label = loc.get("section")
+
+        locator_hits = _locator_entries_to_hits(
+            _collect_locator_entries(locator, page_no, figure_label, table_label),
+            ctx,
+        )
+
+        if page_no is not None:
+            force_pages = [page_no]
+        elif figure_label:
+            entries = locator.get("figures", {}).get(str(figure_label), [])
+            force_pages = sorted({e.get("page_number") for e in entries if e.get("page_number") is not None}) or None
+        elif table_label:
+            entries = locator.get("tables", {}).get(str(table_label), [])
+            force_pages = sorted({e.get("page_number") for e in entries if e.get("page_number") is not None}) or None
+        elif section_label:
+            entries = locator.get("sections", {}).get(str(section_label), [])
+            force_pages = sorted({e.get("page_number") for e in entries if e.get("page_number") is not None}) or None
+
     if not queries:
         return {
             "query": query,
@@ -138,6 +224,9 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
         summary_hits_all.extend(_tag_hits(summary_hits, q))
         block_hits_all.extend(_tag_hits(block_hits, q))
 
+    if locator_hits:
+        block_hits_all.extend(_tag_hits(locator_hits, query))
+
     summary_hits_all, block_hits_all = _apply_filters(summary_hits_all, block_hits_all, filters)
     summary_hits = _merge_hits(summary_hits_all)
     block_hits = _merge_hits(block_hits_all)
@@ -152,6 +241,7 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
 
     stats = _stats(summary_hits, block_hits)
     stats["queries_used"] = len(queries)
+    stats["locator_hits"] = len(locator_hits)
 
     return {
         "query": query,

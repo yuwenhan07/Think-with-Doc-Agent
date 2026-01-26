@@ -1,10 +1,12 @@
 import json
 import os
+import re
 from pathlib import Path
+from collections import defaultdict
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 import faiss
-from collections import defaultdict
-from typing import Optional
 
 from PIL import Image
 from vllm import LLM
@@ -17,6 +19,11 @@ VLLM_RUNNER = "pooling"
 IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
 _VLLM_CLIENT: Optional[LLM] = None
 VLLM_TP = int(os.environ.get("VLLM_TP_SIZE", "4"))
+
+_FIGURE_RE = re.compile(r"\bfig(?:ure)?\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
+_TABLE_RE = re.compile(r"\btable\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
+_HEADING_NUM_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)\b")
+_SECTION_RE = re.compile(r"\bsection\s+(\d+(?:\.\d+)*)\b", re.IGNORECASE)
 
 def _get_vllm_client() -> LLM:
     global _VLLM_CLIENT
@@ -116,6 +123,90 @@ def iter_block_items_by_page(doc: dict):
         by_page[it["page_number"]].append(it)
     return by_page
 
+
+def _extract_headings(text_raw: str, max_lines: int = 8) -> List[str]:
+    if not text_raw:
+        return []
+    lines = [l.strip() for l in text_raw.splitlines() if l.strip()]
+    head_lines = lines[:max_lines]
+    headings: List[str] = []
+    for line in head_lines:
+        if len(line) > 90:
+            continue
+        if _HEADING_NUM_RE.match(line):
+            headings.append(line)
+            continue
+        if line.isupper() and len(line.split()) <= 10:
+            headings.append(line)
+            continue
+        if re.match(r"^[A-Z][A-Za-z0-9 ,:\-]{3,}$", line) and len(line.split()) <= 10:
+            headings.append(line)
+    # de-dup while preserving order
+    return list(dict.fromkeys(headings))
+
+
+def _anchor_entry(page_no: int, block: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "page_number": page_no,
+        "block_id": block.get("block_id"),
+        "type": block.get("type"),
+        "text": block.get("text"),
+        "asset_path": block.get("asset_path"),
+        "bbox_px": block.get("bbox_px"),
+        "span_id": block.get("span_id"),
+        "source": block.get("source"),
+    }
+
+
+def _is_caption_like(text: str) -> bool:
+    t = text.strip().lower()
+    return t.startswith("figure") or t.startswith("fig.") or t.startswith("fig ") or t.startswith("table")
+
+
+def build_locator_index(doc: Dict[str, Any]) -> Dict[str, Any]:
+    locator: Dict[str, Any] = {
+        "doc_id": doc.get("doc_id"),
+        "figures": {},
+        "tables": {},
+        "sections": {},
+        "page_headings": {},
+    }
+
+    for page in doc.get("pages", []):
+        page_no = page.get("page_number")
+        text_raw = page.get("text_raw") or ""
+        headings = _extract_headings(text_raw)
+        if headings:
+            locator["page_headings"][str(page_no)] = headings
+            for h in headings:
+                m = _HEADING_NUM_RE.match(h)
+                if m:
+                    label = m.group(1)
+                    locator["sections"].setdefault(label, []).append({
+                        "page_number": page_no,
+                        "heading": h,
+                    })
+
+        for match in _SECTION_RE.finditer(text_raw):
+            label = match.group(1)
+            locator["sections"].setdefault(label, []).append({
+                "page_number": page_no,
+                "heading": match.group(0),
+            })
+
+        for block in page.get("blocks", []) or []:
+            text = block.get("text") or ""
+            if text and not _is_caption_like(text) and block.get("type") not in ("figure", "table"):
+                continue
+            for m in _FIGURE_RE.finditer(text):
+                label = m.group(1)
+                locator["figures"].setdefault(label, []).append(_anchor_entry(page_no, block))
+            for m in _TABLE_RE.finditer(text):
+                label = m.group(1)
+                locator["tables"].setdefault(label, []).append(_anchor_entry(page_no, block))
+
+    return locator
+
 def build_indexes(input_json: str, out_dir: str):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -188,6 +279,10 @@ def build_indexes(input_json: str, out_dir: str):
 
     with open(out_dir / "blocks.manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    locator_index = build_locator_index(doc)
+    with open(out_dir / "locator.index.json", "w", encoding="utf-8") as f:
+        json.dump(locator_index, f, ensure_ascii=False, indent=2)
 
     total_blocks = sum(p["count"] for p in manifest["pages"])
     print(f"OK: summary={len(sum_items)} blocks={total_blocks} (per-page shards={len(manifest['pages'])})")
