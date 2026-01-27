@@ -16,6 +16,9 @@ from prompt import (
     strip_long_tabular_blocks,
 )
 
+BASE_URL = "http://localhost:8003/v1"
+BASE_MODEL = "Qwen3-VL-32B-Instruct"
+
 
 def _encode_image_base64(image_path: str) -> str:
     with open(image_path, "rb") as f:
@@ -29,8 +32,8 @@ class QianfanVLMClient:
         self,
         *,
         api_key_env: str = "QianFan_API_KEY",
-        base_url: str = "https://qianfan.baidubce.com/v2",
-        model_id: str = "qwen3-vl-32b-instruct",
+        base_url: str = BASE_URL,
+        model_id: str = BASE_MODEL,
         min_pixels: int = 512 * 32 * 32,
         max_pixels: int = 2048 * 32 * 32,
     ) -> None:

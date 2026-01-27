@@ -44,7 +44,7 @@ class ExecutionState:
 
 
 _SEARCH_MODULE: Optional[Any] = None
-_LOCATOR_RE = re.compile(r"\b(page|p\.|figure|fig\.|table)\b", re.IGNORECASE)
+_LOCATOR_RE = re.compile(r"\b(page|p\.|pg\.|figure|fig\.|table|tab\.|tbl\.)\b", re.IGNORECASE)
 
 
 def _load_search_module(root: Path):

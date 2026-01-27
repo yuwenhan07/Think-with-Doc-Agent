@@ -13,6 +13,9 @@ from qwen_vl_utils import smart_resize
 from openai import OpenAI
 import os
 import base64
+
+BASE_URL = "http://localhost:8003/v1"
+BASE_MODEL = "Qwen3-VL-32B-Instruct"
 # Base64 encoding helper
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -20,11 +23,11 @@ def encode_image(image_path):
 
 
 # @title inference function with API
-def inference_with_api(image_path, prompt, model_id="qwen3-vl-32b-instruct", min_pixels=512*32*32, max_pixels=2048*32*32):
+def inference_with_api(image_path, prompt, model_id=BASE_MODEL, min_pixels=512*32*32, max_pixels=2048*32*32):
     base64_image = encode_image(image_path)
     api_key = os.environ.get("QianFan_API_KEY")
     client = OpenAI(
-        base_url="https://qianfan.baidubce.com/v2",
+        base_url=BASE_URL,
         api_key=api_key,
     )
 
@@ -57,7 +60,7 @@ def inference_with_api(image_path, prompt, model_id="qwen3-vl-32b-instruct", min
 @dataclass
 class OCRConfig:
     prompt: str = "qwenvl markdown"
-    model_id: str = "qwen3-vl-32b-instruct"
+    model_id: str = BASE_MODEL
     min_pixels: int = 512 * 32 * 32
     max_pixels: int = 4608 * 32 * 32
     factor: int = 32

@@ -1,46 +1,28 @@
-import os
-# Use spawn to avoid fork+Cuda exit crashes when vLLM uses multiprocessing.
-os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
-
+import base64
 import json
 import os
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import numpy as np
 import faiss
-
-from PIL import Image
-from vllm import LLM
-
-VLLM_MODEL = "/home/work/models/Qwen3-VL-Embedding-2B"
-VLLM_RUNNER = "pooling"
-IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
-_VLLM_CLIENT: Optional[LLM] = None
-VLLM_TP = int(os.environ.get("VLLM_TP_SIZE", "4"))
+import numpy as np
+import requests
 
 
-def _get_vllm_client() -> LLM:
-    global _VLLM_CLIENT
-    if _VLLM_CLIENT is None:
-        _VLLM_CLIENT = LLM(
-            model=VLLM_MODEL,
-            runner=VLLM_RUNNER,
-            tensor_parallel_size=VLLM_TP,
-        )
-    return _VLLM_CLIENT
+QIANFAN_BASE_URL = "https://qianfan.baidubce.com/v2"
+QIANFAN_URL = f"{QIANFAN_BASE_URL}/embeddings"
+QIANFAN_MODEL = "gme-qwen2-vl-2b-instruct"
+QIANFAN_TOKEN = os.environ.get("QianFan_API_KEY")
+
+# ---- rate limit config ----
+QIANFAN_MIN_INTERVAL = 0.05  # seconds between requests (4 QPS)
+_QIANFAN_LAST_CALL_TS = 0.0
 
 
 def shutdown_vllm_client() -> None:
-    """Cleanly stop vLLM engine processes to avoid core dumps on exit."""
-    global _VLLM_CLIENT
-    if _VLLM_CLIENT is None:
-        return
-    try:
-        # vLLM does not expose a public close() yet; use engine_core shutdown.
-        _VLLM_CLIENT.llm_engine.engine_core.shutdown()
-    finally:
-        _VLLM_CLIENT = None
+    """Compatibility no-op for callers expecting a shutdown hook."""
+    return None
 
 
 def l2_normalize(vec: np.ndarray) -> np.ndarray:
@@ -64,21 +46,58 @@ def load_json(path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def _embed_inputs(inputs: list[dict]) -> List[np.ndarray]:
-    if not inputs:
-        return []
+def _post_embeddings(inputs: list[object]) -> List[np.ndarray]:
+    """
+    inputs: ["text", ...] or [{"image": "<base64>"}]
+    return: [np.ndarray(d), ...]
+    """
+    if not QIANFAN_TOKEN:
+        raise RuntimeError("Missing env QianFan_API_KEY")
 
-    outputs = _get_vllm_client().embed(inputs)
+    global _QIANFAN_LAST_CALL_TS
+    now = time.time()
+    wait = QIANFAN_MIN_INTERVAL - (now - _QIANFAN_LAST_CALL_TS)
+    if wait > 0:
+        time.sleep(wait)
+
+    text_only = True
+    for item in inputs:
+        if isinstance(item, dict) and "image" in item:
+            text_only = False
+            break
+    if text_only:
+        normalized = [
+            item.get("text") if isinstance(item, dict) else item
+            for item in inputs
+        ]
+    else:
+        normalized = inputs
+
+    payload = {"model": QIANFAN_MODEL, "input": normalized}
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {QIANFAN_TOKEN}",
+    }
+    resp = requests.post(QIANFAN_URL, headers=headers, data=json.dumps(payload), timeout=60)
+    _QIANFAN_LAST_CALL_TS = time.time()
+
+    if resp.status_code == 429:
+        time.sleep(2)
+        return _post_embeddings(inputs)
+
+    resp.raise_for_status()
+    data = resp.json()
+
     out: List[np.ndarray] = []
-    for item in outputs:
-        out.append(np.array(item.outputs.embedding, dtype=np.float32))
+    for item in data.get("data", []):
+        out.append(np.array(item["embedding"], dtype=np.float32))
     if not out:
-        raise RuntimeError("Empty embedding response from vLLM.")
+        raise RuntimeError(f"Empty embedding response: {data}")
     return out
 
 
 def embed_text(text: str) -> np.ndarray:
-    v = _embed_inputs([{"prompt": text}])[0]
+    v = _post_embeddings([text])[0]
     return l2_normalize(v.astype(np.float32))
 
 
@@ -86,10 +105,8 @@ def embed_image(image_path: str) -> np.ndarray:
     p = Path(image_path)
     if not p.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
-    image = Image.open(p).convert("RGB")
-    v = _embed_inputs([
-        {"prompt": IMAGE_PLACEHOLDER, "multi_modal_data": {"image": image}}
-    ])[0]
+    b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
+    v = _post_embeddings([{"image": b64}])[0]
     return l2_normalize(v.astype(np.float32))
 
 

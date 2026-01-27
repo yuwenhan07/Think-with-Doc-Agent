@@ -1,100 +1,72 @@
-import base64
 import json
 import os
 import re
-import time
-from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from collections import defaultdict
+from typing import Any, Dict, List, Optional
 
-import faiss
 import numpy as np
-import requests
+import faiss
 
+from PIL import Image
+from vllm import LLM
 
-QIANFAN_BASE_URL = "https://qianfan.baidubce.com/v2"
-QIANFAN_URL = f"{QIANFAN_BASE_URL}/embeddings"
-QIANFAN_MODEL = "gme-qwen2-vl-2b-instruct"
-QIANFAN_TOKEN = os.environ.get("QianFan_API_KEY")
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
-# ---- rate limit config ----
-QIANFAN_MIN_INTERVAL = 0.05  # seconds between requests (4 QPS)
-_QIANFAN_LAST_CALL_TS = 0.0
+VLLM_MODEL = "/home/work/bos-qgq/wh/models/Qwen3-VL-Embedding-2B"
+VLLM_RUNNER = "pooling"
+IMAGE_PLACEHOLDER = "<|vision_start|><|image_pad|><|vision_end|>"
+_VLLM_CLIENT: Optional[LLM] = None
+VLLM_TP = int(os.environ.get("VLLM_TP_SIZE", "4"))
 
 _FIGURE_RE = re.compile(r"\bfig(?:ure)?\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
 _TABLE_RE = re.compile(r"\btable\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
 _HEADING_NUM_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)\b")
 _SECTION_RE = re.compile(r"\bsection\s+(\d+(?:\.\d+)*)\b", re.IGNORECASE)
 
+def _get_vllm_client() -> LLM:
+    global _VLLM_CLIENT
+    if _VLLM_CLIENT is None:
+        _VLLM_CLIENT = LLM(
+            model=VLLM_MODEL,
+            runner=VLLM_RUNNER,
+            tensor_parallel_size=VLLM_TP,
+        )
+    return _VLLM_CLIENT
 
 def l2_normalize(vec: np.ndarray) -> np.ndarray:
     denom = np.linalg.norm(vec) + 1e-12
     return vec / denom
 
-
-def _post_embeddings(inputs: list[object]) -> list[np.ndarray]:
+def _embed_inputs(inputs: list[dict]) -> list[np.ndarray]:
     """
-    inputs: [{"text": "..."}] or [{"image": "<base64>"}] or [{"text":"...","image":"..."}]
+    inputs: vLLM embedding inputs with "prompt" and optional "multi_modal_data".
     return: [np.ndarray(d), ...]
     """
-    if not QIANFAN_TOKEN:
-        raise RuntimeError("Missing env QianFan_API_KEY")
+    if not inputs:
+        return []
 
-    global _QIANFAN_LAST_CALL_TS
-    now = time.time()
-    wait = QIANFAN_MIN_INTERVAL - (now - _QIANFAN_LAST_CALL_TS)
-    if wait > 0:
-        time.sleep(wait)
-
-    text_only = True
-    for item in inputs:
-        if isinstance(item, dict) and "image" in item:
-            text_only = False
-            break
-    if text_only:
-        normalized = [
-            item.get("text") if isinstance(item, dict) else item
-            for item in inputs
-        ]
-    else:
-        normalized = inputs
-
-    payload = {"model": QIANFAN_MODEL, "input": normalized}
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {QIANFAN_TOKEN}",
-    }
-    resp = requests.post(QIANFAN_URL, headers=headers, data=json.dumps(payload), timeout=60)
-    _QIANFAN_LAST_CALL_TS = time.time()
-
-    if resp.status_code == 429:
-        time.sleep(2)
-        return _post_embeddings(inputs)
-
-    resp.raise_for_status()
-    data = resp.json()
-
-    # Typical embeddings response: data["data"][i]["embedding"]
-    out = []
-    for item in data.get("data", []):
-        emb = np.array(item["embedding"], dtype=np.float32)
+    outputs = _get_vllm_client().embed(inputs)
+    out: list[np.ndarray] = []
+    for item in outputs:
+        emb = np.array(item.outputs.embedding, dtype=np.float32)
         out.append(emb)
     if not out:
-        raise RuntimeError(f"Empty embedding response: {data}")
+        raise RuntimeError("Empty embedding response from vLLM.")
     return out
 
-
 def embed_text(text: str) -> np.ndarray:
-    return _post_embeddings([text])[0]
-
+    return _embed_inputs([{"prompt": text}])[0]
 
 def embed_image(image_path: str) -> np.ndarray:
     p = Path(image_path)
     if not p.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
-    b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
-    return _post_embeddings([{"image": b64}])[0]
-
+    image = Image.open(p).convert("RGB")
+    return _embed_inputs([
+        {"prompt": IMAGE_PLACEHOLDER, "multi_modal_data": {"image": image}}
+    ])[0]
 
 def build_faiss_cosine(vectors: list[np.ndarray]) -> faiss.Index:
     # cosine = inner product after L2 normalize
@@ -103,7 +75,6 @@ def build_faiss_cosine(vectors: list[np.ndarray]) -> faiss.Index:
     mat = np.vstack([l2_normalize(v) for v in vectors]).astype(np.float32)
     index.add(mat)
     return index
-
 
 def iter_summary_items(doc: dict):
     doc_id = doc.get("doc_id")
@@ -117,7 +88,6 @@ def iter_summary_items(doc: dict):
             "page_number": p["page_number"],
             "text": s,
         }
-
 
 def iter_block_items(doc: dict):
     doc_id = doc.get("doc_id")
@@ -142,7 +112,6 @@ def iter_block_items(doc: dict):
             if not item["text"] and not item["asset_path"]:
                 continue
             yield item
-
 
 def iter_block_items_by_page(doc: dict):
     """
@@ -172,7 +141,7 @@ def _extract_headings(text_raw: str, max_lines: int = 8) -> List[str]:
             continue
         if re.match(r"^[A-Z][A-Za-z0-9 ,:\-]{3,}$", line) and len(line.split()) <= 10:
             headings.append(line)
-    # De-dup while preserving order.
+    # de-dup while preserving order
     return list(dict.fromkeys(headings))
 
 
@@ -246,7 +215,6 @@ def build_locator_index(doc: Dict[str, Any]) -> Dict[str, Any]:
 
     return locator
 
-
 def build_indexes(input_json: str, out_dir: str):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -271,7 +239,7 @@ def build_indexes(input_json: str, out_dir: str):
 
     manifest = {
         "doc_id": doc.get("doc_id"),
-        "model": QIANFAN_MODEL,
+        "model": VLLM_MODEL,
         "pages": []
     }
 
@@ -284,10 +252,10 @@ def build_indexes(input_json: str, out_dir: str):
             if t == "text":
                 v = embed_text(it["text"] or "")
             elif t in ("figure", "table"):
-                # Use cropped images for visual blocks.
+                # 你的要求：直接读 crop 后图片
                 v = embed_image(it["asset_path"])
             else:
-                # Fallback: prefer text, otherwise image.
+                # 兜底：优先 text，否则 image
                 if it.get("text"):
                     v = embed_text(it["text"])
                 else:
@@ -296,7 +264,7 @@ def build_indexes(input_json: str, out_dir: str):
             blk_items.append(it)
             blk_vecs.append(v)
 
-        # Skip empty pages.
+        # 该页可能没有可编码内容（理论上已过滤，但稳妥处理）
         if not blk_items:
             continue
 
