@@ -15,11 +15,11 @@ import os
 import base64
 
 # local
-# BASE_URL = "http://localhost:8003/v1"
-# BASE_MODEL = "Qwen3-VL-32B-Instruct"
+BASE_URL = "http://localhost:8003/v1"
+BASE_MODEL = "Qwen3-VL-32B-Instruct"
 # remote
-BASE_URL = "https://qianfan.baidubce.com/v2"
-BASE_MODEL = "qwen3-vl-32b-instruct"
+# BASE_URL = "https://qianfan.baidubce.com/v2"
+# BASE_MODEL = "qwen3-vl-32b-instruct"
 # Base64 encoding helper
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:

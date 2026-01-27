@@ -1,52 +1,52 @@
 {
   "doc_id": "sha256:9f674bcff69c86f11c813dcfad613d8841f5f8ed17979e3c4df06a91df7762e0",
-  "model": "/home/work/bos-qgq/wh/models/Qwen3-VL-Embedding-2B",
+  "model": "/home/work/models/Qwen3-VL-Embedding-2B",
   "pages": [
     {
       "page_number": 1,
-      "count": 16,
+      "count": 15,
       "index": "blocks.p0001.index.faiss",
       "meta": "blocks.p0001.meta.jsonl"
     },
     {
       "page_number": 2,
-      "count": 17,
+      "count": 16,
       "index": "blocks.p0002.index.faiss",
       "meta": "blocks.p0002.meta.jsonl"
     },
     {
       "page_number": 3,
-      "count": 13,
+      "count": 11,
       "index": "blocks.p0003.index.faiss",
       "meta": "blocks.p0003.meta.jsonl"
     },
     {
       "page_number": 4,
-      "count": 22,
+      "count": 23,
       "index": "blocks.p0004.index.faiss",
       "meta": "blocks.p0004.meta.jsonl"
     },
     {
       "page_number": 5,
-      "count": 19,
+      "count": 18,
       "index": "blocks.p0005.index.faiss",
       "meta": "blocks.p0005.meta.jsonl"
     },
     {
       "page_number": 6,
-      "count": 15,
+      "count": 21,
       "index": "blocks.p0006.index.faiss",
       "meta": "blocks.p0006.meta.jsonl"
     },
     {
       "page_number": 7,
-      "count": 17,
+      "count": 14,
       "index": "blocks.p0007.index.faiss",
       "meta": "blocks.p0007.meta.jsonl"
     },
     {
       "page_number": 8,
-      "count": 13,
+      "count": 10,
       "index": "blocks.p0008.index.faiss",
       "meta": "blocks.p0008.meta.jsonl"
     },
@@ -70,7 +70,7 @@
     },
     {
       "page_number": 12,
-      "count": 16,
+      "count": 36,
       "index": "blocks.p0012.index.faiss",
       "meta": "blocks.p0012.meta.jsonl"
     },
