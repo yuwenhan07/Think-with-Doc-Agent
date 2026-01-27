@@ -1,6 +1,6 @@
 {
   "doc_id": "sha256:9f674bcff69c86f11c813dcfad613d8841f5f8ed17979e3c4df06a91df7762e0",
-  "model": "gme-qwen2-vl-2b-instruct",
+  "model": "/home/work/bos-qgq/wh/models/Qwen3-VL-Embedding-2B",
   "pages": [
     {
       "page_number": 1,
