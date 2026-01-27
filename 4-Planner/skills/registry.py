@@ -7,6 +7,7 @@ from .rewrite.skill import execute as rewrite_execute
 from .search.skill import execute as search_execute
 from .locator.skill import execute as locator_execute
 from .judge_retrieval.skill import execute as judge_retrieval_execute
+from .judge_locator.skill import execute as judge_locator_execute
 from .build_context.skill import execute as build_context_execute
 from .answer.skill import execute as answer_execute
 from .judge_answer.skill import execute as judge_answer_execute
@@ -19,6 +20,7 @@ SKILL_REGISTRY: Dict[str, SkillFn] = {
     "search": search_execute,
     "locator": locator_execute,
     "judge_retrieval": judge_retrieval_execute,
+    "judge_locator": judge_locator_execute,
     "build_context": build_context_execute,
     "answer": answer_execute,
     "judge_answer": judge_answer_execute,

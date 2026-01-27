@@ -32,6 +32,7 @@ class ExecutionState:
     last_search_result: Optional[Dict[str, Any]] = None
     last_context: Optional[Dict[str, Any]] = None
     last_answer: Optional[Dict[str, Any]] = None
+    last_locator_result: Optional[Dict[str, Any]] = None
     last_rewrite_result: Optional[Dict[str, Any]] = None
     last_rewrite_query: Optional[str] = None
     last_rewrites: List[str] = field(default_factory=list)
@@ -159,6 +160,12 @@ class Executor:
                 "verdict": obs.get("verdict") if isinstance(obs, dict) else None,
                 "suggestions": obs.get("suggestions") if isinstance(obs, dict) else None,
             }
+        if state.last_tool == "judge_locator":
+            return {
+                "tool": "judge_locator",
+                "verdict": obs.get("verdict") if isinstance(obs, dict) else None,
+                "state": obs.get("state") if isinstance(obs, dict) else None,
+            }
         if state.last_tool == "answer":
             return {
                 "tool": "answer",
@@ -215,6 +222,11 @@ class Executor:
             return {
                 "tool": "judge_retrieval",
                 "args": {"query": state.query, "search_result": state.last_search_result},
+            }
+        if state.last_tool == "locator":
+            return {
+                "tool": "judge_locator",
+                "args": {"query": state.query, "locator_result": state.last_locator_result or state.last_observation},
             }
         if state.last_tool == "answer":
             return {
@@ -297,6 +309,11 @@ class Executor:
         elif tool == "judge_retrieval":
             if "search_result" not in args:
                 args["search_result"] = state.last_search_result or {}
+            if "query" not in args:
+                args["query"] = state.query
+        elif tool == "judge_locator":
+            if "locator_result" not in args:
+                args["locator_result"] = state.last_locator_result or {}
             if "query" not in args:
                 args["query"] = state.query
         return args
@@ -518,6 +535,7 @@ class Executor:
                 state.last_context = obs.get("context")
             if tool == "locator":
                 state.last_context = obs.get("context")
+                state.last_locator_result = obs
             if tool == "answer":
                 state.last_answer = obs
             if tool == "judge_answer":
