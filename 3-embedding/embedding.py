@@ -9,10 +9,11 @@ import numpy as np
 import faiss
 
 from PIL import Image
-from vllm import LLM
+import atexit
 
-import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
+
+from vllm import LLM
 
 VLLM_MODEL = "/home/work/bos-qgq/wh/models/Qwen3-VL-Embedding-2B"
 VLLM_RUNNER = "pooling"
@@ -34,6 +35,33 @@ def _get_vllm_client() -> LLM:
             tensor_parallel_size=VLLM_TP,
         )
     return _VLLM_CLIENT
+
+
+def _try_shutdown_engine(obj: Any) -> None:
+    if obj is None:
+        return
+    for name in ("shutdown", "stop", "close"):
+        fn = getattr(obj, name, None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:
+                pass
+            return
+
+
+def shutdown_vllm() -> None:
+    global _VLLM_CLIENT
+    client = _VLLM_CLIENT
+    _VLLM_CLIENT = None
+    if client is None:
+        return
+    _try_shutdown_engine(client)
+    _try_shutdown_engine(getattr(client, "llm_engine", None))
+    _try_shutdown_engine(getattr(client, "engine", None))
+
+
+atexit.register(shutdown_vllm)
 
 def l2_normalize(vec: np.ndarray) -> np.ndarray:
     denom = np.linalg.norm(vec) + 1e-12
@@ -216,81 +244,84 @@ def build_locator_index(doc: Dict[str, Any]) -> Dict[str, Any]:
     return locator
 
 def build_indexes(input_json: str, out_dir: str):
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    doc = json.loads(Path(input_json).read_text(encoding="utf-8"))
+        doc = json.loads(Path(input_json).read_text(encoding="utf-8"))
 
-    # -------- summary index --------
-    sum_items, sum_vecs = [], []
-    for it in iter_summary_items(doc):
-        v = embed_text(it["text"])
-        sum_items.append(it)
-        sum_vecs.append(v)
+        # -------- summary index --------
+        sum_items, sum_vecs = [], []
+        for it in iter_summary_items(doc):
+            v = embed_text(it["text"])
+            sum_items.append(it)
+            sum_vecs.append(v)
 
-    sum_index = build_faiss_cosine(sum_vecs)
-    faiss.write_index(sum_index, str(out_dir / "summary.index.faiss"))
-    with open(out_dir / "summary.meta.jsonl", "w", encoding="utf-8") as f:
-        for it in sum_items:
-            f.write(json.dumps(it, ensure_ascii=False) + "\n")
-
-    # -------- block index (per-page shards) --------
-    blocks_by_page = iter_block_items_by_page(doc)
-
-    manifest = {
-        "doc_id": doc.get("doc_id"),
-        "model": VLLM_MODEL,
-        "pages": []
-    }
-
-    for page_no in sorted(blocks_by_page.keys()):
-        page_items = blocks_by_page[page_no]
-
-        blk_items, blk_vecs = [], []
-        for it in page_items:
-            t = it.get("type")
-            if t == "text":
-                v = embed_text(it["text"] or "")
-            elif t in ("figure", "table"):
-                # 你的要求：直接读 crop 后图片
-                v = embed_image(it["asset_path"])
-            else:
-                # 兜底：优先 text，否则 image
-                if it.get("text"):
-                    v = embed_text(it["text"])
-                else:
-                    v = embed_image(it["asset_path"])
-
-            blk_items.append(it)
-            blk_vecs.append(v)
-
-        # 该页可能没有可编码内容（理论上已过滤，但稳妥处理）
-        if not blk_items:
-            continue
-
-        blk_index = build_faiss_cosine(blk_vecs)
-
-        idx_name = f"blocks.p{page_no:04d}.index.faiss"
-        meta_name = f"blocks.p{page_no:04d}.meta.jsonl"
-
-        faiss.write_index(blk_index, str(out_dir / idx_name))
-        with open(out_dir / meta_name, "w", encoding="utf-8") as f:
-            for it in blk_items:
+        sum_index = build_faiss_cosine(sum_vecs)
+        faiss.write_index(sum_index, str(out_dir / "summary.index.faiss"))
+        with open(out_dir / "summary.meta.jsonl", "w", encoding="utf-8") as f:
+            for it in sum_items:
                 f.write(json.dumps(it, ensure_ascii=False) + "\n")
 
-        manifest["pages"].append({
-            "page_number": page_no,
-            "count": len(blk_items),
-            "index": idx_name,
-            "meta": meta_name,
-        })
+        # -------- block index (per-page shards) --------
+        blocks_by_page = iter_block_items_by_page(doc)
 
-    with open(out_dir / "blocks.manifest.json", "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
+        manifest = {
+            "doc_id": doc.get("doc_id"),
+            "model": VLLM_MODEL,
+            "pages": []
+        }
 
-    locator_index = build_locator_index(doc)
-    with open(out_dir / "locator.index.json", "w", encoding="utf-8") as f:
-        json.dump(locator_index, f, ensure_ascii=False, indent=2)
+        for page_no in sorted(blocks_by_page.keys()):
+            page_items = blocks_by_page[page_no]
 
-    total_blocks = sum(p["count"] for p in manifest["pages"])
-    print(f"OK: summary={len(sum_items)} blocks={total_blocks} (per-page shards={len(manifest['pages'])})")
+            blk_items, blk_vecs = [], []
+            for it in page_items:
+                t = it.get("type")
+                if t == "text":
+                    v = embed_text(it["text"] or "")
+                elif t in ("figure", "table"):
+                    # 你的要求：直接读 crop 后图片
+                    v = embed_image(it["asset_path"])
+                else:
+                    # 兜底：优先 text，否则 image
+                    if it.get("text"):
+                        v = embed_text(it["text"])
+                    else:
+                        v = embed_image(it["asset_path"])
+
+                blk_items.append(it)
+                blk_vecs.append(v)
+
+            # 该页可能没有可编码内容（理论上已过滤，但稳妥处理）
+            if not blk_items:
+                continue
+
+            blk_index = build_faiss_cosine(blk_vecs)
+
+            idx_name = f"blocks.p{page_no:04d}.index.faiss"
+            meta_name = f"blocks.p{page_no:04d}.meta.jsonl"
+
+            faiss.write_index(blk_index, str(out_dir / idx_name))
+            with open(out_dir / meta_name, "w", encoding="utf-8") as f:
+                for it in blk_items:
+                    f.write(json.dumps(it, ensure_ascii=False) + "\n")
+
+            manifest["pages"].append({
+                "page_number": page_no,
+                "count": len(blk_items),
+                "index": idx_name,
+                "meta": meta_name,
+            })
+
+        with open(out_dir / "blocks.manifest.json", "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+        locator_index = build_locator_index(doc)
+        with open(out_dir / "locator.index.json", "w", encoding="utf-8") as f:
+            json.dump(locator_index, f, ensure_ascii=False, indent=2)
+
+        total_blocks = sum(p["count"] for p in manifest["pages"])
+        print(f"OK: summary={len(sum_items)} blocks={total_blocks} (per-page shards={len(manifest['pages'])})")
+    finally:
+        shutdown_vllm()
