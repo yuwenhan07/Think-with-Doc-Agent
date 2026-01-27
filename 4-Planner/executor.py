@@ -275,6 +275,17 @@ class Executor:
         if tool == "search":
             base_query = args.get("query") or state.query
             args["query"] = base_query
+            if "page" not in args and "page_number" in args:
+                args["page"] = args.get("page_number")
+            if "page" in args:
+                page_arg = args.get("page")
+                filters = args.get("filters", {}) or {}
+                if "force_pages" not in filters or not filters.get("force_pages"):
+                    if isinstance(page_arg, list):
+                        filters["force_pages"] = [int(p) for p in page_arg if p is not None]
+                    else:
+                        filters["force_pages"] = [int(page_arg)]
+                args["filters"] = filters
             queries = args.get("queries")
             if not queries and state.last_rewrites and state.last_rewrite_query == base_query:
                 queries = [base_query] + list(state.last_rewrites)

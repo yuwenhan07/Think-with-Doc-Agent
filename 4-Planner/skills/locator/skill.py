@@ -4,17 +4,29 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..context import ExecutionContext, LLMConfig
+from ..llm_utils import get_llm_client, safe_json
 
 _PAGE_RE = re.compile(r"\bpage\s+(\d+)\b", re.IGNORECASE)
+_PAGES_RANGE_RE = re.compile(r"\bpages?\s*(\d+)\s*(?:-|–|—|~|to)\s*(\d+)\b", re.IGNORECASE)
 _PAGE_SHORT_RE = re.compile(r"\bp\.?\s*(\d+)\b", re.IGNORECASE)
+_PAGES_SHORT_RANGE_RE = re.compile(r"\bpp?\.?\s*(\d+)\s*(?:-|–|—|~|to)\s*(\d+)\b", re.IGNORECASE)
 _FIGURE_RE = re.compile(r"\bfig(?:ure)?\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
 _TABLE_RE = re.compile(r"\btable\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
 
 
 def _parse_query_locators(query: str) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"page": None, "figure": None, "table": None}
+    out: Dict[str, Any] = {"page": None, "page_range": None, "figure": None, "table": None}
     if not query:
         return out
+    m = _PAGES_RANGE_RE.search(query)
+    if not m:
+        m = _PAGES_SHORT_RANGE_RE.search(query)
+    if m:
+        start = int(m.group(1))
+        end = int(m.group(2))
+        if start > end:
+            start, end = end, start
+        out["page_range"] = [start, end]
     m = _PAGE_RE.search(query)
     if not m:
         m = _PAGE_SHORT_RE.search(query)
@@ -27,6 +39,45 @@ def _parse_query_locators(query: str) -> Dict[str, Any]:
     if m:
         out["table"] = m.group(1)
     return out
+
+
+def _llm_parse_page_range(query: str, llm: LLMConfig) -> Optional[List[int]]:
+    if not query:
+        return None
+    prompt = (
+        "Extract page range from the query if present.\n"
+        "Return JSON only. Use either:\n"
+        "{\"page_range\": [start, end]}\n"
+        "or {}\n"
+        f"Query: {query}\n"
+    )
+    client = get_llm_client(llm)
+    completion = client.chat.completions.create(
+        model=llm.model_id,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+        max_tokens=64,
+        response_format={"type": "json_object"},
+    )
+    content = completion.choices[0].message.content or ""
+    parsed = safe_json(content) or {}
+    if not isinstance(parsed, dict):
+        return None
+    page_range = parsed.get("page_range")
+    if (
+        isinstance(page_range, list)
+        and len(page_range) == 2
+        and all(isinstance(x, (int, float, str)) for x in page_range)
+    ):
+        try:
+            start = int(page_range[0])
+            end = int(page_range[1])
+        except (TypeError, ValueError):
+            return None
+        if start > end:
+            start, end = end, start
+        return [start, end]
+    return None
 
 
 def _collect_locator_entries(
@@ -83,8 +134,13 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
     query = args.get("query", "")
     locator = ctx.locator or {}
     loc = _parse_query_locators(query)
+    if not loc.get("page") and not loc.get("page_range"):
+        llm_range = _llm_parse_page_range(query, llm)
+        if llm_range:
+            loc["page_range"] = llm_range
 
     page_no = loc.get("page")
+    page_range = loc.get("page_range")
     figure_label = loc.get("figure")
     table_label = loc.get("table")
 
@@ -92,6 +148,8 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
     pages: List[int] = []
     if page_no is not None:
         pages = [page_no]
+    elif page_range:
+        pages = list(range(page_range[0], page_range[1] + 1))
     else:
         pages = sorted({e.get("page_number") for e in entries if e.get("page_number") is not None})
 

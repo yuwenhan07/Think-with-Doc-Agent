@@ -9,6 +9,7 @@ Input
 {
   "query": "summarize this paper",
   "queries": ["summarize this paper", "paper contributions", "main findings"],
+  "page": 2,
   "k_pages": 8,
   "k_blocks": 30,
   "final_topk": 10,

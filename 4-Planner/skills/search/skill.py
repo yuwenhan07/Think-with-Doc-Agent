@@ -8,7 +8,9 @@ from ..context import ExecutionContext, LLMConfig
 
 _REF_RE = re.compile(r"\b(references|bibliography|reference)\b", re.IGNORECASE)
 _PAGE_RE = re.compile(r"\bpage\s+(\d+)\b", re.IGNORECASE)
+_PAGES_RANGE_RE = re.compile(r"\bpages?\s*(\d+)\s*(?:-|–|—|~|to)\s*(\d+)\b", re.IGNORECASE)
 _PAGE_SHORT_RE = re.compile(r"\bp\.?\s*(\d+)\b", re.IGNORECASE)
+_PAGES_SHORT_RANGE_RE = re.compile(r"\bpp?\.?\s*(\d+)\s*(?:-|–|—|~|to)\s*(\d+)\b", re.IGNORECASE)
 _FIGURE_RE = re.compile(r"\bfig(?:ure)?\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
 _TABLE_RE = re.compile(r"\btable\.?\s*([0-9]+[a-z]?)\b", re.IGNORECASE)
 _SECTION_RE = re.compile(r"\bsection\s+(\d+(?:\.\d+)*)\b", re.IGNORECASE)
@@ -90,9 +92,18 @@ def _merge_hits(hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _parse_query_locators(query: str) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"page": None, "figure": None, "table": None, "section": None}
+    out: Dict[str, Any] = {"page": None, "page_range": None, "figure": None, "table": None, "section": None}
     if not query:
         return out
+    m = _PAGES_RANGE_RE.search(query)
+    if not m:
+        m = _PAGES_SHORT_RANGE_RE.search(query)
+    if m:
+        start = int(m.group(1))
+        end = int(m.group(2))
+        if start > end:
+            start, end = end, start
+        out["page_range"] = [start, end]
     m = _PAGE_RE.search(query)
     if not m:
         m = _PAGE_SHORT_RE.search(query)
@@ -145,6 +156,8 @@ def _locator_entries_to_hits(
 
 def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict[str, Any]:
     query = args.get("query", "")
+    if "page" not in args and "page_number" in args:
+        args["page"] = args.get("page_number")
     queries = _normalize_queries(query, args.get("queries"))
     k_pages = int(args.get("k_pages", 8))
     k_blocks = int(args.get("k_blocks", 30))
@@ -152,12 +165,19 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
     filters = args.get("filters", {}) or {}
 
     force_pages = filters.get("force_pages")
+    page_arg = args.get("page")
+    if page_arg is not None and not force_pages:
+        if isinstance(page_arg, list):
+            force_pages = [int(p) for p in page_arg if p is not None]
+        else:
+            force_pages = [int(page_arg)]
     locator = ctx.locator or {}
     locator_hits: List[Dict[str, Any]] = []
 
     if not force_pages and query:
         loc = _parse_query_locators(query)
         page_no = loc.get("page")
+        page_range = loc.get("page_range")
         figure_label = loc.get("figure")
         table_label = loc.get("table")
         section_label = loc.get("section")
@@ -169,6 +189,8 @@ def execute(args: Dict[str, Any], ctx: ExecutionContext, llm: LLMConfig) -> Dict
 
         if page_no is not None:
             force_pages = [page_no]
+        elif page_range:
+            force_pages = list(range(page_range[0], page_range[1] + 1))
         elif figure_label:
             entries = locator.get("figures", {}).get(str(figure_label), [])
             force_pages = sorted({e.get("page_number") for e in entries if e.get("page_number") is not None}) or None

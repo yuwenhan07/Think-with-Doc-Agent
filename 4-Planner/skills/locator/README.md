@@ -14,7 +14,7 @@ Input
 Output
 ```json
 {
-  "locator": {"page": 2, "figure": "2", "table": null},
+  "locator": {"page": 2, "page_range": null, "figure": "2", "table": null},
   "context": {
     "question": "what does figure 2 in page 2 say?",
     "evidence": [
