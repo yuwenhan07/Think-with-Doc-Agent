@@ -12,8 +12,12 @@ from openai import OpenAI
 @dataclass
 class PlannerConfig:
     api_key_env: str = "QianFan_API_KEY"
-    base_url: str = "http://localhost:8003/v1"
-    model_id: str = "Qwen3-VL-32B-Instruct"
+    # local
+    # base_url: str = "http://localhost:8003/v1"
+    # model_id: str = "Qwen3-VL-32B-Instruct"
+    # remote
+    base_url: str = "https://qianfan.baidubce.com/v2"
+    model_id: str = "qwen3-vl-32b-instruct"
     temperature: float = 0.2
     max_tokens: int = 1024
 

@@ -16,9 +16,12 @@ from prompt import (
     strip_long_tabular_blocks,
 )
 
-BASE_URL = "http://localhost:8003/v1"
-BASE_MODEL = "Qwen3-VL-32B-Instruct"
-
+# local
+# BASE_URL = "http://localhost:8003/v1"
+# BASE_MODEL = "Qwen3-VL-32B-Instruct"
+# remote
+BASE_URL = "https://qianfan.baidubce.com/v2"
+BASE_MODEL = "qwen3-vl-32b-instruct"
 
 def _encode_image_base64(image_path: str) -> str:
     with open(image_path, "rb") as f:
